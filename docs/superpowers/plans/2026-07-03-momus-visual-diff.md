@@ -103,7 +103,7 @@ Expected: prints a version (e.g. `1.x.x`). If "command not found", install with 
 - [ ] **Step 3: Install dependencies**
 
 Run: `bun install`
-Expected: creates `bun.lockb` and `node_modules/`, no errors.
+Expected: creates a lockfile (`bun.lock` on Bun 1.2+, else `bun.lockb`) and `node_modules/`, no errors.
 
 - [ ] **Step 4: Create `tsconfig.json`**
 
@@ -114,7 +114,6 @@ Expected: creates `bun.lockb` and `node_modules/`, no errors.
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["bun-types"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
@@ -332,6 +331,15 @@ test("globstar ** crosses segments", () => {
   expect(matchPath("/blog/post/comments", "/blog/**")).toBe(true);
   expect(matchPath("/blog", "/blog/**")).toBe(true);
   expect(matchPath("/admin", "/**")).toBe(true);
+});
+
+test("bare and mid-pattern globstar (regression guards)", () => {
+  // bare ** (not preceded by /) still crosses segments
+  expect(matchPath("/x/foo", "**/foo")).toBe(true);
+  // mid-pattern /**/ backtracks for both zero and many intermediate segments
+  expect(matchPath("/a/b", "/a/**/b")).toBe(true);
+  expect(matchPath("/a/x/y/b", "/a/**/b")).toBe(true);
+  expect(matchPath("/a/b/c", "/a/**/b")).toBe(false);
 });
 ```
 
@@ -1205,6 +1213,26 @@ maybe("captures a full-page PNG from a local server", async () => {
     server.stop();
   }
 });
+
+maybe("records a 404 as an error, not a capture", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => new Response("missing", { status: 404 }),
+  });
+  const url = `http://localhost:${server.port}/nope`;
+  const browser = await launchBrowser();
+  try {
+    const res = await capture(browser, url, 1280, {
+      waitUntil: "load", settleMs: 0, timeoutMs: 10000,
+      disableAnimations: true, mask: [],
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("404");
+  } finally {
+    await browser.close();
+    server.stop();
+  }
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1239,17 +1267,28 @@ export async function capture(
 ): Promise<CaptureResult> {
   const context = await newContext(browser, viewportWidth);
   const page = await context.newPage();
+  // Single shared deadline so nav + settle together honor one `timeoutMs` cap
+  // (spec §6), rather than allowing up to 2× the configured budget.
+  const deadline = Date.now() + opts.timeoutMs;
   try {
-    // Hard navigation: a genuine load failure (DNS, connection refused, HTTP
+    // Hard navigation: a genuine load failure (DNS, connection refused, nav
     // timeout) throws here and is recorded as an error (spec §7).
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
+    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
+    // An HTTP error (404/500/…) does NOT throw in Playwright — it returns a
+    // response. Treat a non-2xx as a load failure per spec §7.
+    if (response && !response.ok()) {
+      return { ok: false, error: `HTTP ${response.status()} at ${url}` };
+    }
     // Soft settle: if the page loaded but `load`/`networkidle` never settles
     // (long-polling, beacons), capture anyway rather than erroring (spec §7).
-    if (opts.waitUntil !== "domcontentloaded") {
+    // Use the REMAINING budget; skip if already exhausted (never pass 0 —
+    // Playwright treats timeout:0 as "no timeout" / wait forever).
+    const remaining = deadline - Date.now();
+    if (opts.waitUntil !== "domcontentloaded" && remaining > 0) {
       try {
-        await page.waitForLoadState(opts.waitUntil, { timeout: opts.timeoutMs });
+        await page.waitForLoadState(opts.waitUntil, { timeout: remaining });
       } catch {
-        // network never went idle within timeout — proceed to capture
+        // network never went idle within budget — proceed to capture
       }
     }
     const css = [
@@ -1779,7 +1818,41 @@ Expected: FAIL — module not found.
 import { Database } from "bun:sqlite";
 import type { ComparisonRecord } from "../types";
 
-const SCHEMA = await Bun.file(new URL("./schema.sql", import.meta.url)).text();
+// DDL inlined as a string constant (NOT read from a .sql file at runtime) so it
+// is embedded in the `bun build --compile` binary. See the note above Step 1.
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS runs (
+  id            INTEGER PRIMARY KEY,
+  started_at    TEXT NOT NULL,
+  finished_at   TEXT,
+  dev_base_url  TEXT NOT NULL,
+  prod_base_url TEXT NOT NULL,
+  config_json   TEXT NOT NULL,
+  status        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comparisons (
+  id            INTEGER PRIMARY KEY,
+  run_id        INTEGER NOT NULL REFERENCES runs(id),
+  path          TEXT NOT NULL,
+  viewport      INTEGER NOT NULL,
+  dev_url       TEXT NOT NULL,
+  prod_url      TEXT NOT NULL,
+  dev_image     BLOB,
+  prod_image    BLOB,
+  diff_image    BLOB,
+  width         INTEGER,
+  height        INTEGER,
+  diff_pixels   INTEGER,
+  diff_score    REAL,
+  passed        INTEGER,
+  status        TEXT NOT NULL,
+  error         TEXT,
+  UNIQUE(run_id, path, viewport)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comparisons_score ON comparisons(run_id, diff_score DESC);
+`;
 
 export function openDb(path: string): Database {
   const db = new Database(path, { create: true });
@@ -1847,8 +1920,8 @@ Expected: PASS (1 test).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/store/schema.sql src/store/db.ts tests/store/db.test.ts
-git commit -m "feat: add SQLite store with schema and typed helpers"
+git add src/store/db.ts tests/store/db.test.ts
+git commit -m "feat: add SQLite store with inlined schema and typed helpers"
 ```
 
 ---
@@ -2580,9 +2653,15 @@ export async function installBrowser(): Promise<number> {
     // playwright-core bundles a CLI "program" (commander) that registers the
     // `install` command on import. Invoking it in-process avoids relying on a
     // globally-installed `playwright` or `bunx`.
+    // @ts-ignore — deep internal subpath; not in playwright-core's type exports.
+    // Pin the exact path in the Chunk 0 spike; a resolution failure here is
+    // caught below and degrades to the manual-install fallback.
     const mod: any = await import("playwright-core/lib/cli/program");
     const program = mod.program ?? mod.default;
     if (program && typeof program.parseAsync === "function") {
+      // Note: commander's parseAsync may call process.exit() itself on
+      // completion/error, in which case control never returns here — the exit
+      // code is still correct. The explicit return covers the non-exiting path.
       await program.parseAsync(["node", "playwright", "install", "chromium"]);
       return 0;
     }
@@ -2866,6 +2945,8 @@ Expected: `Built ./momus`.
 - [ ] **Step 2: Create two throwaway local sites and a config**
 
 Serve two static directories that differ on one page (e.g. `python3 -m http.server` in two folders, or two `Bun.serve` scripts). Run `./momus init` and edit `dev`/`prod` in `momus.config.ts` to point at them; set `discovery.sitemap` false and `discovery.crawl.enabled` true (or add a sitemap) so discovery finds pages.
+
+> **Config-import note:** the scaffolded `momus.config.ts` starts with `import { defineConfig } from "momus"`. That bare specifier only resolves if this dir has `momus` on its module path (run the smoke inside the repo, or `bun link momus` first). For a standalone throwaway dir, either `bun link` momus or replace the first line with a plain typed object (drop the `defineConfig` import) — `loadConfigFile` validates via Zod regardless, so `defineConfig` is only for editor types.
 
 - [ ] **Step 3: Run the binary end-to-end**
 
