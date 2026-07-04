@@ -21,8 +21,8 @@ diffed in a worker pool, and gated against a configurable score threshold.
 ### From a release binary (recommended)
 
 Download the binary for your platform from the [latest release](../../releases/latest)
-(`momus-linux-x64`, `momus-linux-arm64`, `momus-darwin-x64`, `momus-darwin-arm64`),
-then:
+(`momus-linux-x64`, `momus-linux-arm64`, `momus-darwin-x64`, `momus-darwin-arm64`,
+or `momus-windows-x64.exe`), then:
 
 ```bash
 chmod +x momus-linux-x64
@@ -174,8 +174,9 @@ Notes:
 Releases are cut by pushing a version tag. The
 [`release` workflow](.github/workflows/release.yml) runs the test suite (with a
 real Chromium so the integration/e2e tests execute), then cross-compiles the
-single-file binary for all four targets from one Linux runner and publishes a
-GitHub release with the binaries and a `SHA256SUMS` file.
+single-file binary for all five targets (linux x64/arm64, macOS x64/arm64,
+Windows x64) from one Linux runner and publishes a GitHub release with the
+binaries and a `SHA256SUMS` file.
 
 ```bash
 git tag v0.1.0

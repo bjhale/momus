@@ -51,13 +51,14 @@ jobs:
       # Bun cross-compiles every target from this one Linux runner. The browser
       # is NOT bundled (users run `momus install-browser`); `chromium-bidi` is
       # externalized because Bun's bundler can't statically resolve Playwright's
-      # dynamic BiDi require (see build.ts / the design spec).
+      # dynamic BiDi require (see build.ts / the design spec). Bun appends `.exe`
+      # to the Windows output automatically.
       - name: Build binaries
         run: |
           set -euo pipefail
           mkdir -p dist
-          for target in bun-linux-x64 bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64; do
-            name="momus-${target#bun-}"   # e.g. momus-linux-x64
+          for target in bun-linux-x64 bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64 bun-windows-x64; do
+            name="momus-${target#bun-}"   # e.g. momus-linux-x64 (Windows becomes momus-windows-x64.exe)
             echo "::group::Building $name ($target)"
             bun build src/cli.ts \
               --compile \
@@ -75,16 +76,14 @@ jobs:
           sha256sum momus-* > SHA256SUMS
           cat SHA256SUMS
 
+      # Upload every artifact in dist (all momus-* binaries + SHA256SUMS). Using a
+      # glob rather than explicit names keeps the Windows `.exe` suffix handled.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" \
-            dist/momus-linux-x64 \
-            dist/momus-linux-arm64 \
-            dist/momus-darwin-x64 \
-            dist/momus-darwin-arm64 \
-            dist/SHA256SUMS \
+            dist/* \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes
