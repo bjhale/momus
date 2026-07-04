@@ -41,8 +41,7 @@
 | `src/diff/diff.ts` | Run pixelmatch on normalized pair → diff PNG + score (pure) |
 | `src/diff/worker.ts` | Bun Worker wrapper around `diff.ts` |
 | `src/diff/pool.ts` | Worker pool: dispatch/collect, crash-respawn |
-| `src/store/schema.sql` | Table DDL |
-| `src/store/db.ts` | `bun:sqlite` open/migrate + typed read/write helpers |
+| `src/store/db.ts` | `bun:sqlite` open/migrate (DDL inlined as a const for `--compile` safety) + typed read/write helpers |
 | `src/pipeline/queue.ts` | Bounded async queue + semaphore |
 | `src/pipeline/verdict.ts` | Threshold/override resolution + exit-code helper |
 | `src/pipeline/run.ts` | Wire discovery → screenshot pool → diff pool → persist |
@@ -50,7 +49,9 @@
 | `src/report/report.ts` | Read run from DB → write HTML file |
 | `src/cli.ts` | Arg parsing, subcommands (`init`, `run`, `install-browser`) |
 | `src/commands/init.ts` | Scaffold `momus.config.ts` |
+| `src/commands/install.ts` | In-process Chromium install (the only downloader) |
 | `src/commands/run.ts` | Wire config → discovery → pipeline → report |
+| `src/index.ts` | Public package entry: re-exports `defineConfig` + config types (for `momus.config.ts`) |
 | `build.ts` | `bun build --compile` wrapper |
 
 ---
@@ -78,13 +79,15 @@ Expected: prints a version (e.g. `1.x.x`). If "command not found", install with 
   "module": "src/cli.ts",
   "type": "module",
   "bin": { "momus": "src/cli.ts" },
+  "exports": { ".": "./src/index.ts", "./package.json": "./package.json" },
   "scripts": {
     "test": "bun test",
     "build": "bun run build.ts",
     "momus": "bun run src/cli.ts"
   },
   "devDependencies": {
-    "@types/pixelmatch": "^5.2.6",
+    "typescript": "^5.6.0",
+    "@types/bun": "latest",
     "@types/pngjs": "^6.0.5"
   },
   "dependencies": {
@@ -136,7 +139,9 @@ Confirm `.gitignore` contains `node_modules/`, `*.sqlite`, `momus-report.html`, 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add package.json tsconfig.json bunfig.toml bun.lockb .gitignore
+# Bun 1.2+ writes a text `bun.lock`; older Bun writes binary `bun.lockb`.
+# `git add -A` commits whichever exists (node_modules etc. are gitignored).
+git add -A
 git commit -m "chore: initialize Bun + TypeScript project"
 ```
 
@@ -288,10 +293,10 @@ export interface ComparisonRecord {
 }
 ```
 
-- [ ] **Step 2: Type-check compiles**
+- [ ] **Step 2: Type-check**
 
-Run: `bun build src/types.ts --target bun --outfile /dev/null`
-Expected: no errors (a types-only file bundles cleanly).
+Run: `bunx tsc --noEmit`
+Expected: no type errors. (`tsc --noEmit` genuinely type-checks; `bun build` only transpiles and would not catch type errors. `typescript` is in devDependencies.)
 
 - [ ] **Step 3: Commit**
 
@@ -351,12 +356,15 @@ function globToRegExp(pattern: string): RegExp {
   let re = "^";
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i]!;
-    if (c === "*") {
+    if (c === "/" && pattern[i + 1] === "*" && pattern[i + 2] === "*") {
+      // "/**" matches an empty suffix OR "/anything", so "/blog/**" matches both
+      // "/blog" and "/blog/post/comments". Consumes the slash + both stars.
+      re += "(?:/.*)?";
+      i += 2;
+    } else if (c === "*") {
       if (pattern[i + 1] === "*") {
-        re += ".*"; // globstar: cross segments
+        re += ".*"; // bare globstar: cross segments
         i++;
-        // consume an optional trailing slash so "/blog/**" matches "/blog"
-        if (pattern[i + 1] === "/") i++;
       } else {
         re += "[^/]*"; // single segment
       }
@@ -372,7 +380,7 @@ function globToRegExp(pattern: string): RegExp {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/glob.test.ts`
-Expected: PASS (3 tests). If `/blog/**` vs `/blog` fails, confirm the trailing-slash consumption logic.
+Expected: PASS (3 tests). Note the `/**` sequence is special-cased to `(?:/.*)?` so `/blog/**` matches both `/blog` and `/blog/post/comments`.
 
 - [ ] **Step 5: Commit**
 
@@ -493,6 +501,33 @@ Expected: PASS (3 tests).
 ```bash
 git add src/config/schema.ts tests/config/schema.test.ts
 git commit -m "feat: add config zod schema, defaults, defineConfig"
+```
+
+### Task 1.3a: Public package entry (`src/index.ts`)
+
+**Files:**
+- Create: `src/index.ts`
+
+> This is what the `exports` map in `package.json` points at, so a user's `momus.config.ts` can `import { defineConfig } from "momus"` and get types + autocomplete. Trivial re-export; no test needed beyond the type-check.
+
+- [ ] **Step 1: Write the re-export**
+
+```ts
+// src/index.ts
+export { defineConfig } from "./config/schema";
+export type { RawConfig, ResolvedConfig } from "./config/schema";
+```
+
+- [ ] **Step 2: Type-check**
+
+Run: `bunx tsc --noEmit`
+Expected: no type errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/index.ts
+git commit -m "feat: add public package entry re-exporting defineConfig"
 ```
 
 ### Task 1.4: Config loader with CLI override precedence
@@ -881,7 +916,8 @@ import type { Fetcher } from "../../src/discovery/sitemap";
 const fetcher: Fetcher = async () => ({ ok: false, status: 404, text: async () => "" });
 
 test("filters via include/exclude and dedupes/sorts", async () => {
-  // Inject discovery functions to isolate orchestration logic.
+  // Sitemap is non-empty, so crawl is NOT used (it is a fallback). This test
+  // exercises dedupe (two "/"), exclude ("/admin/**"), and sorting.
   const paths = await discoverPaths({
     base: "https://www.example.com",
     sitemap: true,
@@ -889,10 +925,10 @@ test("filters via include/exclude and dedupes/sorts", async () => {
     include: ["/**"],
     exclude: ["/admin/**"],
     fetcher,
-    _sitemapFn: async () => ["/", "/pricing", "/admin/secret", "/"],
-    _crawlFn: async () => ["/blog"],
+    _sitemapFn: async () => ["/pricing", "/", "/admin/secret", "/"],
+    _crawlFn: async () => { throw new Error("crawl must not run when sitemap is non-empty"); },
   });
-  expect(paths).toEqual(["/", "/blog", "/pricing"]);
+  expect(paths).toEqual(["/", "/pricing"]);
 });
 
 test("falls back to crawl when sitemap yields nothing", async () => {
@@ -1204,7 +1240,18 @@ export async function capture(
   const context = await newContext(browser, viewportWidth);
   const page = await context.newPage();
   try {
-    await page.goto(url, { waitUntil: opts.waitUntil, timeout: opts.timeoutMs });
+    // Hard navigation: a genuine load failure (DNS, connection refused, HTTP
+    // timeout) throws here and is recorded as an error (spec §7).
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
+    // Soft settle: if the page loaded but `load`/`networkidle` never settles
+    // (long-polling, beacons), capture anyway rather than erroring (spec §7).
+    if (opts.waitUntil !== "domcontentloaded") {
+      try {
+        await page.waitForLoadState(opts.waitUntil, { timeout: opts.timeoutMs });
+      } catch {
+        // network never went idle within timeout — proceed to capture
+      }
+    }
     const css = [
       opts.disableAnimations ? disableAnimationsCss() : "",
       maskCss(opts.mask),
@@ -1638,14 +1685,16 @@ git commit -m "feat: add diff worker pool with crash respawn"
 ### Task 5.1: Schema DDL + DB open/migrate
 
 **Files:**
-- Create: `src/store/schema.sql`
 - Create: `src/store/db.ts`
 - Test: `tests/store/db.test.ts`
 
-- [ ] **Step 1: Create the DDL**
+> **Why the DDL is inlined (not a `.sql` file):** loading a non-JS asset at runtime via `Bun.file(new URL("./schema.sql", import.meta.url))` works under `bun test` but is not guaranteed to be embedded by `bun build --compile`, so it could throw *only* in the shipped binary. Inlining the DDL as a `const` string keeps it inside the bundle and removes that risk.
+
+- [ ] **Step 1: (schema is inlined in `db.ts` in Step 4 — no separate file)**
+
+The DDL that `db.ts` will embed as a string constant:
 
 ```sql
--- src/store/schema.sql
 CREATE TABLE IF NOT EXISTS runs (
   id            INTEGER PRIMARY KEY,
   started_at    TEXT NOT NULL,
@@ -2152,8 +2201,10 @@ test("report contains pages, scores, and is self-contained", () => {
   expect(html).toContain("/broken");
   expect(html).toContain("404 on dev");
   expect(html).toContain("data:image/png;base64,");
-  // Self-contained: no external network references.
-  expect(html).not.toMatch(/src=["']https?:/);
+  // Self-contained: no external network references of any kind (spec §3 stage 6).
+  expect(html).not.toMatch(/src=["']https?:/);        // no remote <img>/<script> src
+  expect(html).not.toMatch(/<script\s+src=/i);         // no external scripts at all
+  expect(html).not.toMatch(/<link\b[^>]*href=["']https?:/i); // no remote stylesheets
   expect(html).toContain("FAIL");
 });
 ```
@@ -2480,9 +2531,8 @@ async function main(): Promise<void> {
       return;
     }
     case "install-browser": {
-      // Delegates to Playwright's installer (the ONLY command that downloads).
-      const proc = Bun.spawn(["bunx", "playwright", "install", "chromium"], { stdout: "inherit", stderr: "inherit" });
-      process.exit(await proc.exited);
+      const { installBrowser } = await import("./commands/install");
+      process.exit(await installBrowser());
     }
     case "run": {
       const { runCommand } = await import("./commands/run");
@@ -2507,6 +2557,58 @@ Expected: PASS (3 tests).
 ```bash
 git add src/cli.ts tests/cli.test.ts
 git commit -m "feat: add CLI arg parsing and subcommand dispatch"
+```
+
+### Task 7.4a: `install-browser` command (the only downloader)
+
+**Files:**
+- Create: `src/commands/install.ts`
+
+> **Why this is not `Bun.spawn(["bunx", "playwright", ...])`:** the deliverable is a distributed single binary (spec §1). A clean host / CI runner is not guaranteed to have `bunx` or the `playwright` npm package on PATH, yet `install-browser` is the *only* sanctioned way to get Chromium (spec §7). So it must download **in-process** using the Playwright code already bundled into the binary, and fall back to a clear instruction if that fails.
+>
+> **Spike dependency:** the exact in-process install call is confirmed during the Chunk 0 compile spike (Task 0.4). If the pinned Playwright version exposes a different install entry point, pin the working call here when you do the spike. If the spike forced a switch to `puppeteer-core`, reimplement `installBrowser()` against `@puppeteer/browsers` instead, keeping the same `installBrowser(): Promise<number>` signature.
+
+- [ ] **Step 1: Write the implementation**
+
+```ts
+// src/commands/install.ts
+// Downloads the pinned Chromium. Runs Playwright's installer in-process so a
+// distributed binary needs no external `bunx`/npm. Exact entry point validated
+// in the Chunk 0 spike (Task 0.4); adjust here if the pinned version differs.
+export async function installBrowser(): Promise<number> {
+  try {
+    // playwright-core bundles a CLI "program" (commander) that registers the
+    // `install` command on import. Invoking it in-process avoids relying on a
+    // globally-installed `playwright` or `bunx`.
+    const mod: any = await import("playwright-core/lib/cli/program");
+    const program = mod.program ?? mod.default;
+    if (program && typeof program.parseAsync === "function") {
+      await program.parseAsync(["node", "playwright", "install", "chromium"]);
+      return 0;
+    }
+    throw new Error("playwright CLI program not found at expected path");
+  } catch (err) {
+    console.error(
+      "Could not install Chromium in-process.\n" +
+      "Install it once manually (use the same PLAYWRIGHT_BROWSERS_PATH momus uses, if set):\n" +
+      "  npx playwright install chromium\n" +
+      `Reason: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return 2;
+  }
+}
+```
+
+- [ ] **Step 2: Smoke-test the command resolves and returns a number**
+
+Run: `bun run src/cli.ts install-browser`
+Expected: either downloads Chromium and exits 0, or prints the manual-install fallback and exits 2 — never an unhandled crash. (If Chromium is already installed, Playwright's installer is a fast no-op.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/commands/install.ts
+git commit -m "feat: add in-process install-browser command"
 ```
 
 ### Task 7.5: `run` command (wires config → discovery → pipeline → report)
@@ -2549,6 +2651,11 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
     return 2;
   }
 
+  // Single-run mode: start from a truly fresh DB file (spec §5/§7), removing any
+  // stale WAL/SHM sidecars from a prior run.
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try { await Bun.file(config.output.db + suffix).delete(); } catch { /* absent */ }
+  }
   const db = openDb(config.output.db);
   const browser = await launchBrowser();
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
@@ -2591,10 +2698,10 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
 }
 ```
 
-- [ ] **Step 2: Type-check the module**
+- [ ] **Step 2: Type-check the whole project**
 
-Run: `bun build src/commands/run.ts --target bun --outfile /dev/null`
-Expected: no type/bundle errors.
+Run: `bunx tsc --noEmit`
+Expected: no type errors. This is the real safety net for `run.ts` — the only wiring module without a unit test — so a signature mismatch here is caught before the browser-gated e2e test (which skips when Chromium is absent).
 
 - [ ] **Step 3: Commit**
 
