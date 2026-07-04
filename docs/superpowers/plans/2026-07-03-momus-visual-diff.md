@@ -37,6 +37,7 @@
 | `src/capture/browser.ts` | Playwright launch/context/teardown + browser presence check |
 | `src/capture/stabilize.ts` | Wait, disable animations, mask selectors |
 | `src/capture/screenshot.ts` | Capture one `(url, viewport)` → PNG buffer (browser-agnostic interface) |
+| `src/pixelmatch.d.ts` | Ambient type declaration for `pixelmatch` (v6 ships none; needed under strict) |
 | `src/diff/normalize.ts` | Pad two PNGs to common dimensions (pure) |
 | `src/diff/diff.ts` | Run pixelmatch on normalized pair → diff PNG + score (pure) |
 | `src/diff/worker.ts` | Bun Worker wrapper around `diff.ts` |
@@ -1136,14 +1137,18 @@ Expected: FAIL — module not found.
 
 ```ts
 // src/capture/browser.ts
-import { chromium, type Browser, type BrowserContext } from "playwright-core";
-import { executablePath } from "playwright";
+// NOTE (from Chunk 0 spike): import `chromium` from the full `playwright`
+// package (NOT playwright-core). It auto-resolves the Chromium it installed, so
+// launch() needs no explicit executablePath, and `chromium.executablePath()` is
+// a METHOD (there is no top-level `executablePath` export).
+import { chromium } from "playwright";
+import type { Browser, BrowserContext } from "playwright-core";
 import { existsSync } from "node:fs";
 
 /** True if the pinned Chromium executable exists on disk. */
 export function isBrowserInstalled(): boolean {
   try {
-    const p = executablePath();
+    const p = chromium.executablePath();
     return typeof p === "string" && p.length > 0 && existsSync(p);
   } catch {
     return false;
@@ -1151,7 +1156,7 @@ export function isBrowserInstalled(): boolean {
 }
 
 export async function launchBrowser(): Promise<Browser> {
-  return chromium.launch({ executablePath: executablePath(), headless: true });
+  return chromium.launch({ headless: true });
 }
 
 export async function newContext(browser: Browser, viewportWidth: number): Promise<BrowserContext> {
@@ -1526,9 +1531,18 @@ git commit -m "feat: add pixelmatch diff with padding and score"
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
 
+// NOTE: fill RGB with `v` but keep alpha OPAQUE (255). Using png.data.fill(v)
+// would set alpha=v too; a fully-transparent image blends to the white diff
+// background (pixelmatch alpha:0.3) and reads as identical to opaque white,
+// yielding diffPixels:0. Opaque pixels make the two images genuinely differ.
 function pngBuffer(w: number, h: number, v: number): Uint8Array {
   const png = new PNG({ width: w, height: h });
-  png.data.fill(v);
+  for (let i = 0; i < w * h; i++) {
+    png.data[i * 4] = v;
+    png.data[i * 4 + 1] = v;
+    png.data[i * 4 + 2] = v;
+    png.data[i * 4 + 3] = 255;
+  }
   return new Uint8Array(PNG.sync.write(png));
 }
 
@@ -2653,10 +2667,13 @@ export async function installBrowser(): Promise<number> {
     // playwright-core bundles a CLI "program" (commander) that registers the
     // `install` command on import. Invoking it in-process avoids relying on a
     // globally-installed `playwright` or `bunx`.
-    // @ts-ignore — deep internal subpath; not in playwright-core's type exports.
-    // Pin the exact path in the Chunk 0 spike; a resolution failure here is
-    // caught below and degrades to the manual-install fallback.
-    const mod: any = await import("playwright-core/lib/cli/program");
+    // @ts-ignore — deep internal subpath; not in playwright's type exports.
+    // The full `playwright` package exports `./lib/program` (a commander program
+    // that registers the `install` command). VERIFIED in this repo's pinned
+    // playwright@1.61: it has `program.parseAsync` and an `install` command, and
+    // invoking it in-process downloads Chromium and returns cleanly. A resolution
+    // failure here is caught below and degrades to the manual-install fallback.
+    const mod: any = await import("playwright/lib/program");
     const program = mod.program ?? mod.default;
     if (program && typeof program.parseAsync === "function") {
       // Note: commander's parseAsync may call process.exit() itself on
@@ -2800,22 +2817,34 @@ git commit -m "feat: add run command wiring"
 // build.ts
 // Compiles momus to a single binary. Playwright browser remains external
 // (installed via `momus install-browser`), per spec §1/§7.
+//
+// `chromium-bidi` MUST be external (confirmed by the Chunk 0 spike): Playwright's
+// playwright-core has dynamic require()s for the WebDriver-BiDi transport that
+// Bun's bundler cannot resolve statically, so the compile fails without this.
+// We drive Chromium over CDP (the default), so the BiDi path is never taken at
+// runtime and externalizing it is safe.
 const result = await Bun.build({
   entrypoints: ["src/cli.ts"],
   compile: { outfile: "momus" },
   target: "bun",
+  external: ["chromium-bidi"],
 });
 if (!result.success) {
   for (const log of result.logs) console.error(log);
   process.exit(1);
 }
 console.log("Built ./momus");
+
+// build.ts is in tsconfig's `include`; top-level await requires this file be a
+// module, so an explicit (empty) export is needed to satisfy `tsc --noEmit`
+// (TS1375). No runtime effect.
+export {};
 ```
 
 - [ ] **Step 2: Build the binary**
 
 Run: `bun run build.ts`
-Expected: prints `Built ./momus` and creates an executable `momus`. (If the `Bun.build` compile option differs in the installed Bun version, fall back to the CLI form: `bun build src/cli.ts --compile --outfile momus`, and change the `build` npm script accordingly.)
+Expected: prints `Built ./momus` and creates an executable `momus`. (If the `Bun.build` compile option differs in the installed Bun version, fall back to the CLI form: `bun build src/cli.ts --compile --external chromium-bidi --outfile momus`, and change the `build` npm script accordingly.)
 
 - [ ] **Step 3: Smoke-test the binary's help**
 
