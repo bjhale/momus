@@ -40,7 +40,7 @@ screenshots, diff images, and scores as BLOBs instead of using the filesystem.
 
 | Area | Decision |
 |------|----------|
-| URL discovery | Sitemap-driven, with link-following crawl as a fallback when no sitemap exists or `--crawl` is set. |
+| URL discovery | Sitemap-driven from the **prod** base URL (the discovery source of truth), with link-following crawl as a fallback when no sitemap exists or `--crawl` is set. |
 | Page pairing | By URL path: the same path is requested on both base URLs. |
 | Diff method | pixelmatch diff **image** plus a numeric difference **score**. |
 | Capture | Full-page screenshots at multiple configurable viewport widths. |
@@ -344,9 +344,12 @@ does not prompt or refuse; it is safe to re-run repeatedly to the same paths.
 
 ### Exit codes
 
-- `0` — ran and all pages passed.
-- `1` — ran, but one or more pages failed the diff gate (CI regression signal).
-- `2` — operational error (no browser, no URLs discovered, invalid config).
+- `0` — ran and every comparison has `status='ok'` and passed the diff gate.
+- `1` — ran, but one or more comparisons failed the diff gate **or** were
+  recorded with `status='error'` (a load failure or worker crash counts as a
+  regression signal for CI, not a silent pass).
+- `2` — operational error that prevented the run itself (no browser, no URLs
+  discovered, invalid config).
 
 This makes momus CI-gateable even though HTML is the primary output.
 
