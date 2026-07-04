@@ -1,9 +1,12 @@
 // src/commands/init.ts
 
 export function configScaffold(): string {
-  return `import { defineConfig } from "momus";
-
-export default defineConfig({
+  // A plain object (not `defineConfig` from "momus") so the config resolves with
+  // no dependency on the momus package being importable — it runs as-is inside
+  // the Docker image and anywhere else. The config is validated at runtime (Zod);
+  // every field has a sensible default. If you install momus as a dependency you
+  // can wrap this in `defineConfig(...)` (imported from "momus") for editor types.
+  return `export default {
   dev: "https://dev.example.com",
   prod: "https://www.example.com",
 
@@ -33,7 +36,7 @@ export default defineConfig({
   concurrency: { screenshots: 6, diffWorkers: 4 },
 
   output: { report: "momus-report.html", db: "momus.sqlite" },
-});
+};
 `;
 }
 

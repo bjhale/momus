@@ -11,49 +11,15 @@ Pages to compare are discovered automatically from the prod site (via
 viewport widths, stabilized (animations disabled, dynamic regions masked),
 diffed in a worker pool, and gated against a configurable score threshold.
 
-## Requirements
-
-- [Bun](https://bun.sh) 1.3+
-- A Chromium browser (installed via `momus install-browser`)
-
 ## Install
 
-### From a release binary (recommended)
+momus is distributed as a **Docker image** with the Chromium browser and all its
+system libraries baked in — that's the recommended way to run it. (Running from
+source with Bun is also supported for development.)
 
-Download the binary for your platform from the [latest release](../../releases/latest)
-(`momus-linux-x64`, `momus-linux-arm64`, `momus-darwin-x64`, `momus-darwin-arm64`,
-or `momus-windows-x64.exe`), then:
+### With Docker (recommended — Chromium included)
 
-```bash
-chmod +x momus-linux-x64
-mv momus-linux-x64 /usr/local/bin/momus   # or anywhere on your PATH
-momus install-browser                     # download the Chromium momus drives
-```
-
-Verify the download against `SHA256SUMS` (published with each release):
-
-```bash
-sha256sum -c SHA256SUMS --ignore-missing
-```
-
-### From source
-
-```bash
-bun install          # install dependencies
-momus install-browser  # download the Chromium build momus drives
-```
-
-`momus install-browser` fetches the Playwright-managed Chromium into the local
-Playwright cache. Run it once per machine (or after upgrading). It is a no-op if
-a compatible browser is already installed.
-
-> Running from source? Use `bun run src/cli.ts <command>` (or the `bun momus`
-> script) anywhere this README shows the `momus` command.
-
-### With Docker (Chromium included)
-
-The published image bundles momus **and** the Chromium browser plus all its
-system libraries — nothing else to install. Mount your working directory (with
+Nothing to install but Docker. Mount your working directory (containing
 `momus.config.ts`) at `/work`:
 
 ```bash
@@ -66,21 +32,38 @@ needs network access to your `dev`/`prod` URLs — if they run on your host, use
 the appropriate Docker networking (e.g. `--network host` on Linux, or
 `host.docker.internal` in the URLs on Docker Desktop).
 
-> The image runs momus in source mode (Bun + Playwright). This is deliberate:
-> the standalone binary can't bundle Playwright's runtime `node_modules`
-> resolution, so the container ships the browser and dependencies ready to go.
+### From source (development)
+
+```bash
+bun install            # install dependencies
+bun run src/cli.ts install-browser   # download the Chromium momus drives
+bun run src/cli.ts run               # capture, diff, and write the report
+```
+
+`install-browser` fetches the Playwright-managed Chromium into the local
+Playwright cache (a no-op if already present). Use `bun run src/cli.ts <command>`
+(or the `bun momus` script) anywhere this README shows the `momus` command.
+
+> **Why no standalone binary?** momus drives Chromium via Playwright, which
+> resolves its `node_modules` at runtime — so `bun build --compile` can't produce
+> a truly self-contained executable (the binary would still need `node_modules`
+> beside it). The Docker image is the portable, batteries-included distribution.
 
 ## Quick start
 
+Using the Docker image (replace `YOUR_DOCKERHUB_USER/momus` with the published
+image name):
+
 ```bash
-momus init                       # scaffold momus.config.ts
+# scaffold momus.config.ts into the current directory
+docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus init
 # edit momus.config.ts: point `dev` and `prod` at your two deployments
-momus install-browser            # one-time browser download
-momus run                        # capture, diff, and write momus-report.html
+docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus run --config momus.config.ts
 ```
 
-Open `momus-report.html` in any browser — it is fully self-contained (images
-are embedded), so it can be committed as a CI artifact or emailed as-is.
+Open the generated `momus-report.html` in any browser — it is fully
+self-contained (images are embedded), so it can be committed as a CI artifact or
+emailed as-is. No `install-browser` step is needed: Chromium is in the image.
 
 ## Commands
 
@@ -221,13 +204,14 @@ version in `bun.lock` (currently `1.61.1`) — bump both together on upgrade.
 
 ## Notes & known limitations
 
-- **Diffing in the compiled binary runs on the main thread.** Under `bun run`,
-  diffs execute in a pool of worker threads (`concurrency.diffWorkers`). In the
-  `bun build --compile` standalone binary, Bun cannot resolve the worker module
-  out of the embedded filesystem, so `momus` transparently falls back to inline
-  main-thread diffing. Results are identical; only diff parallelism is reduced.
-  Screenshot capture (the dominant cost) is parallel in both modes. Restoring
-  worker-based diffing in the compiled binary is a possible future improvement.
+- **No standalone single-file binary is distributed.** momus drives Chromium via
+  Playwright, which resolves `playwright-core` from `node_modules` at runtime, so
+  `bun build --compile` can't produce a self-contained executable (it would still
+  need `node_modules` beside it). momus therefore ships as the Docker image
+  (source mode: Bun + Playwright, with Chromium included), where diffing uses the
+  full worker-thread pool (`concurrency.diffWorkers`). Running from source works
+  the same way. `build.ts` still produces a local binary for development, but it
+  is not portable.
 - **Dimension mismatches are detected but not yet annotated.** When a page's dev
   and prod screenshots differ in height/width, the shorter image is padded with
   an opaque sentinel color so the size change reliably shows up as a diff (and
