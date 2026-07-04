@@ -86,6 +86,8 @@ Captures the **prod** baseline once into `output.db` (default `momus.sqlite`):
 discovers pages from prod, screenshots each at every viewport, and stores the
 prod images plus the capture context (viewports + stabilize settings). Reuse it
 across many `momus run` invocations without re-screenshotting prod.
+Running `momus snapshot` again replaces the baseline — it is how you refresh the
+frozen prod capture that `momus run` reuses.
 
 | Flag | Description |
 | --- | --- |
@@ -99,17 +101,20 @@ is the portable artifact — commit it or pass it as a CI artifact.
 
 ### `momus run [flags]`
 
-Runs the pipeline against the configured `dev` build. momus **auto-detects** a
-prod baseline in `output.db`:
+Runs the pipeline against the configured `dev` build, always diffing dev against
+a stored **prod baseline**:
 
-- **Baseline present** (written by `momus snapshot`): captures **dev only** and
-  diffs each page against the stored prod images — prod is not re-screenshotted.
-  The run reuses the baseline's page set and viewports, and **fails fast (exit
-  2)** if the live config's `viewports` or `stabilize` settings differ from the
-  baseline's. Only the `runs`/`comparisons` tables are refreshed; the baseline
-  is preserved.
-- **No baseline**: discovers from prod and captures **both** dev and prod live
-  (the original one-shot behavior).
+- **No baseline yet** (fresh `output.db`): `momus run` captures the prod baseline
+  as its first step — discovering pages and screenshotting prod — then diffs dev
+  against it and writes the report, all in one invocation.
+- **Baseline present**: `momus run` reuses it and captures **dev only** — prod is
+  **not** re-screenshotted (it is frozen). The run **fails fast (exit 2)** if the
+  live config's `viewports` or `stabilize` settings differ from the baseline's.
+
+Because prod is frozen after the first run, repeated `momus run` invocations diff
+against the same prod baseline. To re-capture prod, run `momus snapshot` (which
+replaces the baseline). Only the `runs`/`comparisons` tables are refreshed each
+run; the baseline is preserved.
 
 | Flag | Description |
 | --- | --- |
@@ -195,8 +200,9 @@ Notes:
 ## How it works
 
 1. **Discover** — collect paths from the prod site's sitemap and/or crawl.
-   With a stored baseline (`momus snapshot`), discovery and prod capture are
-   skipped — the run diffs live dev against the baseline's prod images.
+   `momus run` captures this prod baseline itself on first use, then reuses it —
+   discovery and prod capture run only when there is no baseline yet (or after
+   `momus snapshot` refreshes it).
 2. **Capture** — for each path × viewport, screenshot both dev and prod with
    animations disabled and masked regions hidden.
 3. **Diff** — compare the two PNGs in a pool of worker threads (pixelmatch),
