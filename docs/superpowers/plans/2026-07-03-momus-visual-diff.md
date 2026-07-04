@@ -37,6 +37,7 @@
 | `src/capture/browser.ts` | Playwright launch/context/teardown + browser presence check |
 | `src/capture/stabilize.ts` | Wait, disable animations, mask selectors |
 | `src/capture/screenshot.ts` | Capture one `(url, viewport)` → PNG buffer (browser-agnostic interface) |
+| `src/pixelmatch.d.ts` | Ambient type declaration for `pixelmatch` (v6 ships none; needed under strict) |
 | `src/diff/normalize.ts` | Pad two PNGs to common dimensions (pure) |
 | `src/diff/diff.ts` | Run pixelmatch on normalized pair → diff PNG + score (pure) |
 | `src/diff/worker.ts` | Bun Worker wrapper around `diff.ts` |
@@ -1530,9 +1531,18 @@ git commit -m "feat: add pixelmatch diff with padding and score"
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
 
+// NOTE: fill RGB with `v` but keep alpha OPAQUE (255). Using png.data.fill(v)
+// would set alpha=v too; a fully-transparent image blends to the white diff
+// background (pixelmatch alpha:0.3) and reads as identical to opaque white,
+// yielding diffPixels:0. Opaque pixels make the two images genuinely differ.
 function pngBuffer(w: number, h: number, v: number): Uint8Array {
   const png = new PNG({ width: w, height: h });
-  png.data.fill(v);
+  for (let i = 0; i < w * h; i++) {
+    png.data[i * 4] = v;
+    png.data[i * 4 + 1] = v;
+    png.data[i * 4 + 2] = v;
+    png.data[i * 4 + 3] = 255;
+  }
   return new Uint8Array(PNG.sync.write(png));
 }
 
