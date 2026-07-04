@@ -18,6 +18,26 @@ diffed in a worker pool, and gated against a configurable score threshold.
 
 ## Install
 
+### From a release binary (recommended)
+
+Download the binary for your platform from the [latest release](../../releases/latest)
+(`momus-linux-x64`, `momus-linux-arm64`, `momus-darwin-x64`, `momus-darwin-arm64`),
+then:
+
+```bash
+chmod +x momus-linux-x64
+mv momus-linux-x64 /usr/local/bin/momus   # or anywhere on your PATH
+momus install-browser                     # download the Chromium momus drives
+```
+
+Verify the download against `SHA256SUMS` (published with each release):
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+### From source
+
 ```bash
 bun install          # install dependencies
 momus install-browser  # download the Chromium build momus drives
@@ -148,6 +168,23 @@ Notes:
 4. **Gate** — mark each page pass/fail against `failScore` (or a path override).
 5. **Report** — write a self-contained `momus-report.html`, worst pages first,
    and exit with the code above.
+
+## Releasing
+
+Releases are cut by pushing a version tag. The
+[`release` workflow](.github/workflows/release.yml) runs the test suite (with a
+real Chromium so the integration/e2e tests execute), then cross-compiles the
+single-file binary for all four targets from one Linux runner and publishes a
+GitHub release with the binaries and a `SHA256SUMS` file.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0   # triggers the release workflow
+```
+
+The tag name becomes the release name. The Chromium browser is **not** bundled
+in the binary (it's ~150 MB and platform-specific) — end users fetch it once
+with `momus install-browser`.
 
 ## Notes & known limitations
 

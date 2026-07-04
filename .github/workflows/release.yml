@@ -1,0 +1,90 @@
+name: release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# The tag name becomes the release name and version.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # required to create the release and upload binaries
+
+jobs:
+  # Gate the release on a green test suite (unit + integration/e2e with a real
+  # Chromium) and a clean type-check. If this fails, no release is published.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Chromium (so the browser-gated tests actually run)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Type-check
+        run: bunx tsc --noEmit
+
+      - name: Test
+        run: bun test
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Bun cross-compiles every target from this one Linux runner. The browser
+      # is NOT bundled (users run `momus install-browser`); `chromium-bidi` is
+      # externalized because Bun's bundler can't statically resolve Playwright's
+      # dynamic BiDi require (see build.ts / the design spec).
+      - name: Build binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in bun-linux-x64 bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64; do
+            name="momus-${target#bun-}"   # e.g. momus-linux-x64
+            echo "::group::Building $name ($target)"
+            bun build src/cli.ts \
+              --compile \
+              --target="$target" \
+              --external chromium-bidi \
+              --outfile "dist/$name"
+            echo "::endgroup::"
+          done
+          ls -la dist
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum momus-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/momus-linux-x64 \
+            dist/momus-linux-arm64 \
+            dist/momus-darwin-x64 \
+            dist/momus-darwin-arm64 \
+            dist/SHA256SUMS \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
