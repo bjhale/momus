@@ -25,6 +25,10 @@ export interface RunPipelineArgs {
   db: Database;
   startedAt: string;
   finishedAt?: string;
+  /** Prod base URL to record on the run row. Defaults to config.prod. In
+   * baseline mode this is the baseline's origin (snapshot.prodBaseUrl), so the
+   * report labels prod correctly even when the live config prod differs. */
+  prodBaseUrl?: string;
   /** The comparison jobs to run (one-shot: discovery×viewports; baseline: stored rows). */
   listJobs: () => Promise<Job[]>;
   /** Obtain the dev-side image for a job (always a live capture). */
@@ -37,7 +41,7 @@ export interface RunPipelineArgs {
 export async function runPipeline(args: RunPipelineArgs): Promise<void> {
   const { config, db } = args;
   const runId = startRun(db, {
-    devBaseUrl: config.dev, prodBaseUrl: config.prod,
+    devBaseUrl: config.dev, prodBaseUrl: args.prodBaseUrl ?? config.prod,
     configJson: JSON.stringify(config), startedAt: args.startedAt,
   });
 

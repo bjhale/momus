@@ -170,3 +170,34 @@ test("listJobs throwing marks the run failed and propagates", async () => {
 
   expect(runStatus(db)).toBe("failed");
 });
+
+test("prodBaseUrl arg overrides the run row's prod_base_url", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+
+  await runPipeline({
+    config, db, startedAt: "s", finishedAt: "f",
+    prodBaseUrl: "https://frozen.example.com",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: okPng, getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+  });
+
+  const row = db.query("SELECT prod_base_url FROM runs WHERE id = 1").get() as { prod_base_url: string };
+  expect(row.prod_base_url).toBe("https://frozen.example.com");
+});
+
+test("without prodBaseUrl the run row falls back to config.prod", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+
+  await runPipeline({
+    config, db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: okPng, getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+  });
+
+  const row = db.query("SELECT prod_base_url FROM runs WHERE id = 1").get() as { prod_base_url: string };
+  expect(row.prod_base_url).toBe("https://www.example.com");
+});
