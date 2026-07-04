@@ -1,15 +1,6 @@
 // src/types.ts
-export interface Viewport { width: number }
 
-/** A single unit of work: one path at one viewport width. */
-export interface Job {
-  path: string;
-  viewport: number;
-  devUrl: string;
-  prodUrl: string;
-}
-
-/** Raw PNG capture for one side of a Job. */
+/** Raw PNG capture for one side of a comparison. */
 export interface CaptureResult {
   ok: boolean;
   png?: Uint8Array;

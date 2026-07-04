@@ -71,8 +71,11 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
     await browser.close().catch(() => {});
   }
 
-  await writeReport(db, 1, config.output.report);
+  // Read comparisons once and reuse for both the report and the exit code,
+  // instead of reading every BLOB row twice.
   const rows = readComparisons(db, 1);
+  await writeReport(db, 1, config.output.report, rows);
+  db.close(); // flush WAL/SHM sidecars cleanly now that we're done writing.
   const code = exitCodeFor(rows);
   console.log(`Wrote ${config.output.report} (${rows.length} comparisons). Exit ${code}.`);
   return code;
