@@ -50,6 +50,26 @@ a compatible browser is already installed.
 > Running from source? Use `bun run src/cli.ts <command>` (or the `bun momus`
 > script) anywhere this README shows the `momus` command.
 
+### With Docker (Chromium included)
+
+The published image bundles momus **and** the Chromium browser plus all its
+system libraries — nothing else to install. Mount your working directory (with
+`momus.config.ts`) at `/work`:
+
+```bash
+docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus \
+  run --config momus.config.ts
+```
+
+The report and SQLite DB are written into the mounted directory. The container
+needs network access to your `dev`/`prod` URLs — if they run on your host, use
+the appropriate Docker networking (e.g. `--network host` on Linux, or
+`host.docker.internal` in the URLs on Docker Desktop).
+
+> The image runs momus in source mode (Bun + Playwright). This is deliberate:
+> the standalone binary can't bundle Playwright's runtime `node_modules`
+> resolution, so the container ships the browser and dependencies ready to go.
+
 ## Quick start
 
 ```bash
@@ -173,19 +193,31 @@ Notes:
 
 Releases are cut by pushing a version tag. The
 [`release` workflow](.github/workflows/release.yml) runs the test suite (with a
-real Chromium so the integration/e2e tests execute), then cross-compiles the
-single-file binary for all five targets (linux x64/arm64, macOS x64/arm64,
-Windows x64) from one Linux runner and publishes a GitHub release with the
-binaries and a `SHA256SUMS` file.
+real Chromium so the integration/e2e tests execute), then in parallel:
+
+- **Binaries** — cross-compiles the single-file binary for all five targets
+  (linux x64/arm64, macOS x64/arm64, Windows x64) from one Linux runner and
+  publishes a GitHub release with the binaries and a `SHA256SUMS` file.
+- **Docker image** — builds the image on native `amd64` and `arm64` runners and
+  pushes a multi-arch tag to Docker Hub (`:<version>` and `:latest`).
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0   # triggers the release workflow
 ```
 
-The tag name becomes the release name. The Chromium browser is **not** bundled
-in the binary (it's ~150 MB and platform-specific) — end users fetch it once
-with `momus install-browser`.
+The tag name becomes the release name and image version.
+
+**Required repository secrets** (Settings → Secrets and variables → Actions) for
+the Docker publish:
+
+| Secret | Value |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Your Docker Hub username (also the image namespace). |
+| `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://hub.docker.com/settings/security) with write scope. |
+
+The base image tag in the [`Dockerfile`](Dockerfile) tracks the `playwright`
+version in `bun.lock` (currently `1.61.1`) — bump both together on upgrade.
 
 ## Notes & known limitations
 

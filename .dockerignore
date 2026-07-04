@@ -1,0 +1,18 @@
+# Keep the build context small — the Dockerfile COPYs only what it needs
+# (package.json, bun.lock, tsconfig.json, src/), so exclude everything else.
+node_modules
+dist
+momus
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+momus-report.html
+report.html
+run.sqlite*
+.git
+.github
+docs
+tests
+spike
+README.md
+.vscode
