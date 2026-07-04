@@ -27,6 +27,16 @@ maybe("captures a full-page PNG from a local server", async () => {
   }
 });
 
+maybe("returns {ok:false} instead of throwing when the browser is closed", async () => {
+  const browser = await launchBrowser();
+  await browser.close();
+  const res = await capture(browser, "http://localhost:1/", 1280, {
+    waitUntil: "load", settleMs: 0, timeoutMs: 10000,
+    disableAnimations: true, mask: [],
+  });
+  expect(res.ok).toBe(false);
+});
+
 maybe("records a 404 as an error, not a capture", async () => {
   const server = Bun.serve({
     port: 0,

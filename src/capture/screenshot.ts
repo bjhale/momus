@@ -1,5 +1,5 @@
 // src/capture/screenshot.ts
-import type { Browser } from "playwright-core";
+import type { Browser, BrowserContext } from "playwright-core";
 import { newContext } from "./browser";
 import { disableAnimationsCss, maskCss } from "./stabilize";
 import type { CaptureResult } from "../types";
@@ -20,17 +20,23 @@ export async function capture(
   viewportWidth: number,
   opts: StabilizeOptions,
 ): Promise<CaptureResult> {
-  const context = await newContext(browser, viewportWidth);
-  const page = await context.newPage();
   // Single shared deadline so nav + settle together honor one `timeoutMs` cap
   // (spec §6), rather than allowing up to 2× the configured budget.
   const deadline = Date.now() + opts.timeoutMs;
+  // Declared before the try so context/page acquisition happens INSIDE it: if
+  // the browser crashed/closed, newContext/newPage reject and we return
+  // { ok:false } rather than throwing (upholds "one bad page can't abort a run").
+  let context: BrowserContext | undefined;
   try {
+    context = await newContext(browser, viewportWidth);
+    const page = await context.newPage();
     // Hard navigation: a genuine load failure (DNS, connection refused, nav
     // timeout) throws here and is recorded as an error (spec §7).
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
     // An HTTP error (404/500/…) does NOT throw in Playwright — it returns a
-    // response. Treat a non-2xx as a load failure per spec §7.
+    // response. Treat a non-2xx as a load failure per spec §7. Note: page.goto
+    // can also return null (same-document / about:blank / some cached navs);
+    // null is treated as success (no HTTP status to reject on).
     if (response && !response.ok()) {
       return { ok: false, error: `HTTP ${response.status()} at ${url}` };
     }
@@ -57,6 +63,6 @@ export async function capture(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
-    await context.close();
+    await context?.close();
   }
 }
