@@ -31,8 +31,8 @@ jobs:
         run: bun test
 
   # A notes-only GitHub release for the changelog. momus is distributed as the
-  # Docker image (see the docker-* jobs) — Chromium and its dependencies are
-  # baked in, so there are no standalone binaries to attach.
+  # Docker image (see the docker job) — Chromium and its dependencies are baked
+  # in, so there are no standalone binaries to attach.
   github-release:
     needs: test
     runs-on: ubuntu-latest
@@ -47,73 +47,20 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --generate-notes
 
-  # Build the Docker image on native runners per architecture and push each by
-  # digest (no tags yet). docker-merge stitches the digests into one multi-arch
-  # tag. (docker/build-push-action's recommended multi-runner pattern.)
+  # Build and push the multi-arch image in one shot: run on an arm64 runner and
+  # let buildx build arm64 natively and amd64 under QEMU emulation.
   # Requires repo secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN.
-  docker-build:
+  docker:
     needs: test
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-24.04-arm
     env:
       IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/momus
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            arch: arm64
-            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          provenance: false
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-
-      - name: Export digest
-        run: |
-          set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/digests"
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digest-${{ matrix.arch }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  # Combine the per-arch digests into a single multi-arch tag on Docker Hub.
-  docker-merge:
-    needs: docker-build
-    runs-on: ubuntu-latest
-    env:
-      IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/momus
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digest-*
-          merge-multiple: true
+      # Register QEMU binfmt handlers so buildx can build the non-native (amd64)
+      # platform via emulation.
+      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -132,13 +79,12 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest
 
-      - name: Create and push multi-arch manifest
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          set -euo pipefail
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf "${IMAGE}@sha256:%s " *)
-
-      - name: Inspect
-        run: docker buildx imagetools inspect "${IMAGE}:latest"
+      - name: Build and push (arm64 native, amd64 emulated)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
