@@ -1,11 +1,7 @@
 // src/capture/browser.ts
-// Import `chromium` from `playwright-core`, NOT the full `playwright` package.
-// The full wrapper does a runtime `require('playwright-core/package.json')` that
-// `bun build --compile` cannot bundle, which makes the standalone binary fail.
-// playwright-core is fully bundleable: `launch({headless:true})` auto-resolves
-// the browser (from $PLAYWRIGHT_BROWSERS_PATH or the default cache) and
-// `chromium.executablePath()` works — both verified from a compiled binary with
-// no node_modules present.
+// Drive Chromium via `playwright-core`: `launch({ headless: true })` resolves the
+// browser from $PLAYWRIGHT_BROWSERS_PATH or the default Playwright cache, and
+// `chromium.executablePath()` returns that path (used for the presence check).
 import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import { existsSync } from "node:fs";
 

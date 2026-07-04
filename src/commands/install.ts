@@ -1,17 +1,12 @@
 // src/commands/install.ts
-// Obtains the Chromium that momus drives.
-//
-// When running from source (node_modules present) momus can invoke Playwright's
-// own installer in-process. In the STANDALONE binary that isn't possible —
-// Playwright's installer resolves its package files from node_modules, which a
-// compiled binary doesn't carry — so momus prints clear guidance instead of a
-// cryptic error. Either way, momus at run time finds Chromium via
-// $PLAYWRIGHT_BROWSERS_PATH or the default Playwright cache.
+// Downloads the Chromium that momus drives, via Playwright's own installer.
+// This is for running momus from source — the Docker image already includes
+// Chromium and its dependencies, so it never needs this command.
 export async function installBrowser(): Promise<number> {
   try {
     // playwright bundles a CLI "program" (commander) that registers the
-    // `install` command on import. This path works from source.
-    // @ts-ignore — internal subpath; playwright/lib/program registers the CLI incl. `install`.
+    // `install` command on import.
+    // @ts-ignore — internal subpath; playwright/lib/program registers `install`.
     const mod: any = await import("playwright/lib/program");
     const program = mod.program ?? mod.default;
     if (program && typeof program.parseAsync === "function") {
@@ -24,17 +19,16 @@ export async function installBrowser(): Promise<number> {
   } catch {
     console.error(
       [
-        "momus can't download Chromium from the standalone binary.",
-        "Install it once with either of these, then re-run momus:",
+        "momus could not download Chromium.",
+        "Install it with Playwright's installer, then re-run momus:",
         "",
-        "  • Playwright's installer (needs Node/npm available):",
-        "      npx playwright install chromium",
+        "  npx playwright install chromium",
         "",
-        "  • Or point momus at an existing browser install:",
-        "      export PLAYWRIGHT_BROWSERS_PATH=/path/to/ms-playwright",
+        "or point momus at an existing browser cache:",
         "",
-        "Or skip this entirely and use the momus Docker image, which already",
-        "includes Chromium and its dependencies.",
+        "  export PLAYWRIGHT_BROWSERS_PATH=/path/to/ms-playwright",
+        "",
+        "Or use the momus Docker image, which already includes Chromium.",
       ].join("\n"),
     );
     return 2;

@@ -13,9 +13,9 @@ diffed in a worker pool, and gated against a configurable score threshold.
 
 ## Install
 
-Two ways to run momus: the **Docker image** (recommended — Chromium and all its
-system libraries are baked in, nothing else to install) or a **standalone
-binary** (smaller, but you supply a Chromium browser).
+momus is distributed as a **Docker image** with the Chromium browser and all its
+system libraries baked in — that's how you run it. (Running from source with Bun
+is also supported for development.)
 
 ### With Docker (recommended — Chromium included)
 
@@ -31,31 +31,6 @@ The report and SQLite DB are written into the mounted directory. The container
 needs network access to your `dev`/`prod` URLs — if they run on your host, use
 the appropriate Docker networking (e.g. `--network host` on Linux, or
 `host.docker.internal` in the URLs on Docker Desktop).
-
-### From a release binary (bring your own browser)
-
-Download the binary for your platform from the [latest release](../../releases/latest)
-(`momus-linux-x64`, `momus-linux-arm64`, `momus-darwin-x64`, `momus-darwin-arm64`,
-or `momus-windows-x64.exe`) and verify it against `SHA256SUMS`:
-
-```bash
-sha256sum -c SHA256SUMS --ignore-missing
-chmod +x momus-linux-x64
-mv momus-linux-x64 /usr/local/bin/momus   # anywhere on your PATH
-```
-
-The binary is self-contained **except for the browser** (a full-size Chromium is
-~150 MB and platform-specific, so it isn't bundled). Provide one either way:
-
-```bash
-# use Playwright's installer (needs Node/npm available once), or…
-npx playwright install chromium
-# …point momus at an existing Playwright browser cache:
-export PLAYWRIGHT_BROWSERS_PATH=/path/to/ms-playwright
-```
-
-momus locates Chromium via `$PLAYWRIGHT_BROWSERS_PATH` or the default Playwright
-cache. If it can't find one, `momus run` exits with guidance.
 
 ### From source (development)
 
@@ -198,9 +173,8 @@ Releases are cut by pushing a version tag. The
 [`release` workflow](.github/workflows/release.yml) runs the test suite (with a
 real Chromium so the integration/e2e tests execute), then in parallel:
 
-- **Binaries** — cross-compiles the single-file binary for all five targets
-  (linux x64/arm64, macOS x64/arm64, Windows x64) from one Linux runner and
-  publishes a GitHub release with the binaries and a `SHA256SUMS` file.
+- **GitHub release** — creates a release for the tag with auto-generated notes
+  (a changelog; no binary assets — momus ships as the Docker image).
 - **Docker image** — builds the image on native `amd64` and `arm64` runners and
   pushes a multi-arch tag to Docker Hub (`:<version>` and `:latest`).
 
@@ -224,16 +198,11 @@ version in `bun.lock` (currently `1.61.1`) — bump both together on upgrade.
 
 ## Notes & known limitations
 
-- **The standalone binary needs a browser supplied separately.** The binary is
-  self-contained (it drives Chromium via `playwright-core`, which bundles
-  cleanly) but does not embed the ~150 MB Chromium itself — install it with
-  `npx playwright install chromium` or point `$PLAYWRIGHT_BROWSERS_PATH` at an
-  existing cache. The Docker image avoids this by baking Chromium in.
-- **Diffing:** under `bun run` and the Docker image, diffs run in a worker-thread
-  pool (`concurrency.diffWorkers`). In a `bun build --compile` binary, Bun can't
-  resolve the worker module from the embedded filesystem, so momus transparently
-  falls back to inline main-thread diffing — identical results, less diff
-  parallelism (screenshot capture, the dominant cost, is parallel either way).
+- **Distributed as a Docker image, not a standalone binary.** momus drives
+  Chromium via Playwright, which needs its `node_modules` and a matching browser
+  at runtime — awkward to ship as a lone executable. The image bundles momus
+  (Bun + Playwright) and Chromium together, so there's nothing else to install,
+  and diffs run in the full worker-thread pool (`concurrency.diffWorkers`).
 - **Dimension mismatches are detected but not yet annotated.** When a page's dev
   and prod screenshots differ in height/width, the shorter image is padded with
   an opaque sentinel color so the size change reliably shows up as a diff (and
