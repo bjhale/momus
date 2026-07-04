@@ -18,3 +18,11 @@ test("parses init and install-browser", () => {
 test("unknown command yields help", () => {
   expect(parseCliArgs([]).command).toBe("help");
 });
+
+test("parses snapshot subcommand with overrides", () => {
+  const p = parseCliArgs(["snapshot", "--prod", "https://p.com", "--concurrency", "4", "--crawl"]);
+  expect(p.command).toBe("snapshot");
+  expect(p.overrides.prod).toBe("https://p.com");
+  expect(p.overrides.concurrency).toBe(4);
+  expect(p.overrides.crawl).toBe(true);
+});

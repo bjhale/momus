@@ -3,14 +3,14 @@ import { parseArgs } from "node:util";
 import type { CliOverrides } from "./config/load";
 
 export interface ParsedCli {
-  command: "run" | "init" | "install-browser" | "help";
+  command: "run" | "snapshot" | "init" | "install-browser" | "help";
   overrides: CliOverrides;
   configPath?: string;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
   const command = (argv[0] ?? "help") as ParsedCli["command"];
-  const known = new Set(["run", "init", "install-browser"]);
+  const known = new Set(["run", "snapshot", "init", "install-browser"]);
   if (!known.has(command)) return { command: "help", overrides: {} };
 
   const { values } = parseArgs({
@@ -55,8 +55,12 @@ async function main(): Promise<void> {
         const { runCommand } = await import("./commands/run");
         process.exit(await runCommand(parsed));
       }
+      case "snapshot": {
+        const { snapshotCommand } = await import("./commands/snapshot");
+        process.exit(await snapshotCommand(parsed));
+      }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--crawl]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--crawl]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--crawl]`);
         process.exit(0);
     }
   } catch (err) {
