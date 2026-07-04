@@ -13,15 +13,20 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta)
   }
 
   const cs = config.stabilize, ss = snapshot.stabilize;
-  if (
-    cs.waitUntil !== ss.waitUntil ||
-    cs.settleMs !== ss.settleMs ||
-    cs.timeoutMs !== ss.timeoutMs ||
-    cs.disableAnimations !== ss.disableAnimations ||
-    cs.mask.length !== ss.mask.length ||
-    cs.mask.some((m, i) => m !== ss.mask[i])
-  ) {
-    return `stabilize settings differ from the baseline; re-snapshot or align momus.config.ts`;
+  if (cs.waitUntil !== ss.waitUntil) {
+    return `stabilize.waitUntil differs: config "${cs.waitUntil}" vs baseline "${ss.waitUntil}"`;
+  }
+  if (cs.settleMs !== ss.settleMs) {
+    return `stabilize.settleMs differs: config ${cs.settleMs} vs baseline ${ss.settleMs}`;
+  }
+  if (cs.timeoutMs !== ss.timeoutMs) {
+    return `stabilize.timeoutMs differs: config ${cs.timeoutMs} vs baseline ${ss.timeoutMs}`;
+  }
+  if (cs.disableAnimations !== ss.disableAnimations) {
+    return `stabilize.disableAnimations differs: config ${cs.disableAnimations} vs baseline ${ss.disableAnimations}`;
+  }
+  if (cs.mask.length !== ss.mask.length || cs.mask.some((m, i) => m !== ss.mask[i])) {
+    return `stabilize.mask differs: config ${JSON.stringify(cs.mask)} vs baseline ${JSON.stringify(ss.mask)}`;
   }
 
   return null;

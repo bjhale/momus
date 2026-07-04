@@ -40,6 +40,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   };
 
   const snapshot = readSnapshot(db);
+  const getDev = (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize);
 
   // Teardown runs in `finally` so both handles always close, even if one close
   // rejects or writeReport throws: `browser.close()` must not be skipped when
@@ -63,7 +64,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
           devUrl: new URL(im.path, config.dev).toString(),
           prodUrl: im.prodUrl,
         })),
-        getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize),
+        getDev,
         getProd: async (job: Job) => {
           const im = byKey.get(`${job.path} ${job.viewport}`)!;
           return im.status === "ok" && im.image
@@ -93,7 +94,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
             prodUrl: new URL(path, config.prod).toString(),
           })));
         },
-        getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize),
+        getDev,
         getProd: (job: Job) => capture(browser, job.prodUrl, job.viewport, config.stabilize),
         diffPool,
       });

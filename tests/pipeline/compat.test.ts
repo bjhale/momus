@@ -31,10 +31,13 @@ test("differing stabilize.mask → conflict mentioning stabilize", () => {
   const msg = baselineConflict(c, snap);
   expect(msg).not.toBeNull();
   expect(msg!.toLowerCase()).toContain("stabilize");
+  expect(msg!.toLowerCase()).toContain("mask");
 });
 
 test("differing stabilize.settleMs → conflict", () => {
   const c = cfg({ stabilize: { settleMs: 100 } });
   const snap = snapFrom(cfg({ stabilize: { settleMs: 999 } }));
-  expect(baselineConflict(c, snap)).not.toBeNull();
+  const msg = baselineConflict(c, snap);
+  expect(msg).not.toBeNull();
+  expect(msg!.toLowerCase()).toContain("settlems");
 });

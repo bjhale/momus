@@ -65,7 +65,7 @@ maybe("snapshot prod once, then run dev against it: unchanged passes, changed fa
         getDev: (job) => capture(browser, job.devUrl, job.viewport, config.stabilize),
         getProd: async (job) => {
           const im = byKey.get(`${job.path} ${job.viewport}`)!;
-          return im.status === "ok" && im.image ? { ok: true, png: im.image } : { ok: false, error: im.error ?? "prod failed" };
+          return im.status === "ok" && im.image ? { ok: true, png: im.image } : { ok: false, error: im.error ?? "prod capture failed in snapshot" };
         },
         diffPool: pool,
       });
