@@ -15,6 +15,10 @@ test("pads both images to max width and height", () => {
   expect(height).toBe(3);
   expect(aData.length).toBe(4 * 3 * 4);
   expect(bData.length).toBe(4 * 3 * 4);
+  // Original top-left pixel is preserved (guards against a stride bug).
+  expect(aData[0]).toBe(255);
+  // The final byte lies in the padded region and must be transparent (0).
+  expect(aData[aData.length - 1]).toBe(0);
 });
 
 test("identical dimensions pass through unchanged", () => {

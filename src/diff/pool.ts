@@ -13,6 +13,9 @@ export class DiffPool {
   private queue: Pending[] = [];
   private inFlight = new Map<Worker, Pending>();
   private nextId = 1;
+  private closed = false;
+  private respawns = 0;
+  private degraded = false;
 
   constructor(size: number) {
     for (let i = 0; i < size; i++) this.spawn();
@@ -34,6 +37,18 @@ export class DiffPool {
       if (job) job.resolve({ id: -1, ok: false, error: "diff worker crashed" });
       this.workers = this.workers.filter((x) => x !== w);
       w.terminate();
+      if (this.closed) return;
+      // Bound respawns so a broken worker module cannot storm-loop forever.
+      this.respawns++;
+      const cap = this.workers.length * 5 + 10;
+      if (this.respawns > cap) {
+        if (!this.degraded) {
+          this.degraded = true;
+          console.error("DiffPool degraded: diff worker respawn cap exceeded; not respawning further");
+        }
+        this.pump();
+        return;
+      }
       this.spawn();
       this.pump();
     };
@@ -43,6 +58,10 @@ export class DiffPool {
 
   submit(aPng: Uint8Array, bPng: Uint8Array, threshold: number): Promise<DiffResponse> {
     return new Promise((resolve) => {
+      if (this.closed) {
+        resolve({ id: -1, ok: false, error: "pool closed" });
+        return;
+      }
       this.queue.push({ aPng, bPng, threshold, resolve });
       this.pump();
     });
@@ -58,6 +77,13 @@ export class DiffPool {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
+    // terminate() fires no message/error events, so resolve pending work ourselves
+    // to avoid leaking callers awaiting in-flight or queued jobs.
+    for (const [, job] of this.inFlight) job.resolve({ id: -1, ok: false, error: "pool closed" });
+    for (const job of this.queue) job.resolve({ id: -1, ok: false, error: "pool closed" });
+    this.inFlight.clear();
+    this.queue = [];
     for (const w of this.workers) w.terminate();
     this.workers = []; this.idle = [];
   }
