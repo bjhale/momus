@@ -1,5 +1,7 @@
 // src/config/load.ts
 import { ConfigSchema, type RawConfig, type ResolvedConfig } from "./schema";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 
 export interface CliOverrides {
   dev?: string;
@@ -30,11 +32,14 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
 }
 
 /** Locate and import a config file, returning the raw (unvalidated) object.
- * Supports .ts/.js (default export) and .json. */
+ * Supports .ts/.js (default export) and .json. Paths are resolved against the
+ * process cwd so a CLI-supplied relative path loads the user's file, not one
+ * relative to this module. */
 export async function loadConfigFile(path: string): Promise<RawConfig> {
-  if (path.endsWith(".json")) {
-    return (await Bun.file(path).json()) as RawConfig;
+  const abs = resolve(process.cwd(), path);
+  if (abs.endsWith(".json")) {
+    return (await Bun.file(abs).json()) as RawConfig;
   }
-  const mod = await import(path);
+  const mod = await import(pathToFileURL(abs).href);
   return (mod.default ?? mod) as RawConfig;
 }
