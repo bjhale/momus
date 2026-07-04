@@ -13,6 +13,5 @@ run.sqlite*
 .github
 docs
 tests
-spike
 README.md
 .vscode
