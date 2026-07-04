@@ -36,6 +36,8 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
   if (!snapshot) {
     // No baseline yet — materialize one now (discover + capture prod). Same
     // ordering guarantees as `momus snapshot`: discovery runs before any clear.
+    // snapshotPipeline clears runs/comparisons; runPipeline's startRun clears
+    // them again below. Benign double-clear — nothing is written in between.
     await snapshotPipeline({
       config, db, createdAt: args.now,
       discover: args.discover,

@@ -78,7 +78,13 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   const code = exitCodeFor(rows);
   // Make freezing explicit: say whether prod was captured now or reused.
   if (result.materialized) {
-    console.log(`Captured prod baseline (${readBaselineImages(db).length} pages).`);
+    const images = readBaselineImages(db);
+    const total = images.length;
+    const failed = images.filter((im) => im.status === "error").length;
+    const ok = total - failed;
+    console.log(failed === 0
+      ? `Captured prod baseline (${ok} pages).`
+      : `Captured prod baseline (${ok}/${total} pages; ${failed} failed).`);
   } else {
     console.log(`Reused prod baseline from ${result.createdAt}. Refresh with \`momus snapshot\`.`);
   }
