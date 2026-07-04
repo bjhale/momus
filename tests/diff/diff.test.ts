@@ -36,6 +36,19 @@ test("different-sized images are padded and diffed", () => {
   const r = diffPngs(a, b, 0.1);
   expect(r.width).toBe(10);
   expect(r.height).toBe(20);
-  // The extra 10 rows differ (opaque red vs transparent padding).
+  // The extra 10 rows differ (opaque red vs opaque magenta padding).
+  expect(r.diffPixels).toBeGreaterThan(0);
+});
+
+test("a white page that grew taller produces a non-zero diff", () => {
+  // Regression (spec §7): with transparent padding, pixelmatch blends the
+  // padded region toward its white background, so a full-page height change on
+  // a WHITE page reads as identical (0 diff). The opaque magenta sentinel must
+  // make the added 10 rows show up as a diff.
+  const shortWhite = pngBuffer(10, 10, [255, 255, 255, 255]);
+  const tallWhite = pngBuffer(10, 20, [255, 255, 255, 255]);
+  const r = diffPngs(shortWhite, tallWhite, 0.1);
+  expect(r.width).toBe(10);
+  expect(r.height).toBe(20);
   expect(r.diffPixels).toBeGreaterThan(0);
 });

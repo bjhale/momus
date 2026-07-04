@@ -17,8 +17,13 @@ test("pads both images to max width and height", () => {
   expect(bData.length).toBe(4 * 3 * 4);
   // Original top-left pixel is preserved (guards against a stride bug).
   expect(aData[0]).toBe(255);
-  // The final byte lies in the padded region and must be transparent (0).
-  expect(aData[aData.length - 1]).toBe(0);
+  // The final pixel lies in the padded region and is now an OPAQUE magenta
+  // sentinel (255,0,255,255) rather than transparent — see padImage comment.
+  const last = aData.length - 4;
+  expect(aData[last]).toBe(255);     // R
+  expect(aData[last + 1]).toBe(0);   // G
+  expect(aData[last + 2]).toBe(255); // B
+  expect(aData[last + 3]).toBe(255); // A (opaque)
 });
 
 test("identical dimensions pass through unchanged", () => {
