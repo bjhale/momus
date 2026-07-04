@@ -60,6 +60,15 @@ Open the generated `momus-report.html` in any browser — it is fully
 self-contained (images are embedded), so it can be committed as a CI artifact or
 emailed as-is. No `install-browser` step is needed: Chromium is in the image.
 
+To capture prod once and compare several dev builds against it:
+
+```bash
+# snapshot prod into momus.sqlite (do this once, or nightly in CI)
+docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus snapshot --config momus.config.ts
+# diff any dev build against the frozen baseline (repeat as often as you like)
+docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus run --dev https://dev-pr-123.example.com
+```
+
 ## Commands
 
 ### `momus init`
@@ -71,9 +80,36 @@ already exists.
 
 Downloads the Chromium build momus captures with.
 
+### `momus snapshot [flags]`
+
+Captures the **prod** baseline once into `output.db` (default `momus.sqlite`):
+discovers pages from prod, screenshots each at every viewport, and stores the
+prod images plus the capture context (viewports + stabilize settings). Reuse it
+across many `momus run` invocations without re-screenshotting prod.
+
+| Flag | Description |
+| --- | --- |
+| `--config FILE` | Path to the config file (default `./momus.config.ts`). |
+| `--prod URL` | Override the config's `prod` base URL. |
+| `--concurrency N` | Override the number of concurrent screenshots. |
+| `--crawl` | Force same-origin crawl discovery on. |
+
+The baseline lives in its own tables inside `output.db`; the single SQLite file
+is the portable artifact — commit it or pass it as a CI artifact.
+
 ### `momus run [flags]`
 
-Runs the full pipeline: discover → capture → diff → report.
+Runs the pipeline against the configured `dev` build. momus **auto-detects** a
+prod baseline in `output.db`:
+
+- **Baseline present** (written by `momus snapshot`): captures **dev only** and
+  diffs each page against the stored prod images — prod is not re-screenshotted.
+  The run reuses the baseline's page set and viewports, and **fails fast (exit
+  2)** if the live config's `viewports` or `stabilize` settings differ from the
+  baseline's. Only the `runs`/`comparisons` tables are refreshed; the baseline
+  is preserved.
+- **No baseline**: discovers from prod and captures **both** dev and prod live
+  (the original one-shot behavior).
 
 | Flag | Description |
 | --- | --- |
@@ -159,6 +195,8 @@ Notes:
 ## How it works
 
 1. **Discover** — collect paths from the prod site's sitemap and/or crawl.
+   With a stored baseline (`momus snapshot`), discovery and prod capture are
+   skipped — the run diffs live dev against the baseline's prod images.
 2. **Capture** — for each path × viewport, screenshot both dev and prod with
    animations disabled and masked regions hidden.
 3. **Diff** — compare the two PNGs in a pool of worker threads (pixelmatch),
@@ -213,5 +251,7 @@ version in `bun.lock` (currently `1.61.1`) — bump both together on upgrade.
   If dev renders but prod 404s (or vice versa), the comparison is stored as an
   error with the message; the successfully-captured side is not currently shown
   on the error card.
-- **Run history is out of scope for now** (single-run, overwritten each run), by
-  design; a separate server component may add history later.
+- **One baseline per DB.** `momus snapshot` stores a single prod baseline in
+  `output.db`; a new snapshot replaces it (and clears stale run results). Full
+  multi-run history remains out of scope; a separate server component may add it
+  later.
