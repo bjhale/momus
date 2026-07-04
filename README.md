@@ -148,3 +148,25 @@ Notes:
 4. **Gate** — mark each page pass/fail against `failScore` (or a path override).
 5. **Report** — write a self-contained `momus-report.html`, worst pages first,
    and exit with the code above.
+
+## Notes & known limitations
+
+- **Diffing in the compiled binary runs on the main thread.** Under `bun run`,
+  diffs execute in a pool of worker threads (`concurrency.diffWorkers`). In the
+  `bun build --compile` standalone binary, Bun cannot resolve the worker module
+  out of the embedded filesystem, so `momus` transparently falls back to inline
+  main-thread diffing. Results are identical; only diff parallelism is reduced.
+  Screenshot capture (the dominant cost) is parallel in both modes. Restoring
+  worker-based diffing in the compiled binary is a possible future improvement.
+- **Dimension mismatches are detected but not yet annotated.** When a page's dev
+  and prod screenshots differ in height/width, the shorter image is padded with
+  an opaque sentinel color so the size change reliably shows up as a diff (and
+  raises the score). The report does not yet print an explicit "dimensions
+  differed" note, nor does it store the original per-side dimensions — a planned
+  enhancement.
+- **A one-sided load failure records the error but not the good side's image.**
+  If dev renders but prod 404s (or vice versa), the comparison is stored as an
+  error with the message; the successfully-captured side is not currently shown
+  on the error card.
+- **Run history is out of scope for now** (single-run, overwritten each run), by
+  design; a separate server component may add history later.
