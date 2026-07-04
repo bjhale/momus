@@ -2667,10 +2667,13 @@ export async function installBrowser(): Promise<number> {
     // playwright-core bundles a CLI "program" (commander) that registers the
     // `install` command on import. Invoking it in-process avoids relying on a
     // globally-installed `playwright` or `bunx`.
-    // @ts-ignore — deep internal subpath; not in playwright-core's type exports.
-    // Pin the exact path in the Chunk 0 spike; a resolution failure here is
-    // caught below and degrades to the manual-install fallback.
-    const mod: any = await import("playwright-core/lib/cli/program");
+    // @ts-ignore — deep internal subpath; not in playwright's type exports.
+    // The full `playwright` package exports `./lib/program` (a commander program
+    // that registers the `install` command). VERIFIED in this repo's pinned
+    // playwright@1.61: it has `program.parseAsync` and an `install` command, and
+    // invoking it in-process downloads Chromium and returns cleanly. A resolution
+    // failure here is caught below and degrades to the manual-install fallback.
+    const mod: any = await import("playwright/lib/program");
     const program = mod.program ?? mod.default;
     if (program && typeof program.parseAsync === "function") {
       // Note: commander's parseAsync may call process.exit() itself on
@@ -2831,6 +2834,11 @@ if (!result.success) {
   process.exit(1);
 }
 console.log("Built ./momus");
+
+// build.ts is in tsconfig's `include`; top-level await requires this file be a
+// module, so an explicit (empty) export is needed to satisfy `tsc --noEmit`
+// (TS1375). No runtime effect.
+export {};
 ```
 
 - [ ] **Step 2: Build the binary**
