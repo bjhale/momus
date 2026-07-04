@@ -19,7 +19,10 @@ Motivations (all three apply):
   against it.
 
 Because all three matter, the snapshot must be a **portable, self-contained
-artifact** that can be committed or uploaded/downloaded as a CI artifact.
+artifact** that can be committed or uploaded/downloaded as a CI artifact. That
+artifact is the single `momus.sqlite` DB itself: the baseline lives in its own
+tables inside the same DB the run uses, so there is exactly one file to move
+around.
 
 ## Core correctness constraint
 
@@ -37,39 +40,52 @@ deliberately does not re-hit prod to re-discover.
 
 ## 1. Workflow & CLI
 
-Two new capabilities, fully backward compatible.
+One new command; `run` gains an auto-detected baseline mode. Fully backward
+compatible. Everything lives in one DB (`config.output.db`, default
+`momus.sqlite`) — there is no separate baseline file and no `--baseline` flag.
 
 ```bash
-# Capture prod once -> a self-contained baseline file
-momus snapshot --config momus.config.ts --out prod-baseline.sqlite
+# Capture prod once -> baseline tables inside momus.sqlite
+momus snapshot --config momus.config.ts
 
-# Diff any number of dev builds against that frozen baseline (no prod hit)
-momus run --baseline prod-baseline.sqlite
-momus run --baseline prod-baseline.sqlite --dev https://dev-pr-123...
+# Diff any number of dev builds against that frozen baseline (no prod hit).
+# run auto-detects the baseline in momus.sqlite.
+momus run
+momus run --dev https://dev-pr-123...
 
-# Unchanged: coupled one-shot still captures both live
+# No baseline in the DB yet -> unchanged coupled one-shot (capture both live)
 momus run
 ```
 
-- **`momus snapshot`** — discover-from-prod + capture-prod, writes a baseline
-  `.sqlite`. Accepts the discovery-relevant flags today's `run` has: `--prod`,
-  `--crawl`, `--config`, `--concurrency`. `--out` sets the baseline path
-  (default `momus-baseline.sqlite`).
-- **`momus run --baseline FILE`** — captures **dev only**, diffs each page
-  against the stored prod image, writes the normal `momus-report.html` +
-  `momus.sqlite`. Path set and viewports come from the baseline. Discovery does
-  **not** run. `--dev`, `--out`, `--concurrency`, `--config` still apply.
-- **`momus run`** (no `--baseline`) — exactly today's behavior (capture both
-  live, discover from prod).
+- **`momus snapshot`** — discover-from-prod + capture-prod, writes/replaces the
+  `snapshot` + `baseline_images` tables **inside `config.output.db`**. Accepts
+  the discovery-relevant flags today's `run` has: `--prod`, `--crawl`,
+  `--config`, `--concurrency`. No `--out` — it targets the config's `output.db`
+  path. Because a new baseline invalidates any prior dev-run results, it also
+  clears stale `runs`/`comparisons` rows.
+- **`momus run`** — reads `config.output.db` and **auto-detects**:
+  - **Baseline present** (`snapshot` table has a row): captures **dev only**,
+    diffs each page against the stored prod image, writes the normal
+    `momus-report.html`. Path set and viewports come from the baseline;
+    discovery does **not** run. `--dev`, `--out`, `--concurrency`, `--config`
+    still apply.
+  - **No baseline**: exactly today's coupled one-shot (capture both live,
+    discover from prod).
 
-## 2. Baseline file format
+  Either way `run` truncates only the `runs`/`comparisons` tables at start and
+  **preserves the baseline tables** — it no longer deletes the DB file.
 
-New dedicated SQLite schema in a new module `src/store/baseline.ts`. A purpose-
-built schema (rather than reusing the `comparisons` table) so intent is explicit
-and there are no half-null rows.
+## 2. Storage: one DB, baseline in its own tables
+
+No separate baseline file. Two new tables are added to the existing schema in
+`src/store/db.ts`, living in `config.output.db` (default `momus.sqlite`)
+alongside `runs`/`comparisons`. `openDb` creates all four via `CREATE TABLE IF
+NOT EXISTS`, so an old DB gains the baseline tables on next open. A dedicated
+baseline shape (rather than reusing `comparisons`) keeps intent explicit and
+avoids half-null rows.
 
 ```sql
-CREATE TABLE snapshot (          -- single row, id = 1
+CREATE TABLE IF NOT EXISTS snapshot (   -- single row, id = 1
   id             INTEGER PRIMARY KEY,
   created_at     TEXT NOT NULL,
   prod_base_url  TEXT NOT NULL,
@@ -78,7 +94,7 @@ CREATE TABLE snapshot (          -- single row, id = 1
   config_json    TEXT NOT NULL   -- full resolved config, for provenance
 );
 
-CREATE TABLE baseline_images (
+CREATE TABLE IF NOT EXISTS baseline_images (
   path      TEXT NOT NULL,
   viewport  INTEGER NOT NULL,
   prod_url  TEXT NOT NULL,
@@ -89,31 +105,36 @@ CREATE TABLE baseline_images (
 );
 ```
 
-Self-contained, one file — commit it or pass it as a CI artifact.
+The single `momus.sqlite` is the portable artifact — commit it or pass it as a
+CI artifact; a later `run` diffs against its baseline tables.
 
-`src/store/baseline.ts` exposes (names indicative):
+New helpers in `src/store/db.ts` (names indicative):
 
-- `openBaselineDb(path)` — create/open, set WAL, apply schema.
-- `writeSnapshotMeta(db, { createdAt, prodBaseUrl, viewports, stabilize, configJson })`.
+- `writeSnapshot(db, { createdAt, prodBaseUrl, viewports, stabilize, configJson })`
+  — replaces the single `snapshot` row (delete-then-insert).
 - `saveBaselineImage(db, { path, viewport, prodUrl, image?, status, error? })`.
-- `readSnapshotMeta(db)` -> `{ createdAt, prodBaseUrl, viewports, stabilize, configJson }`.
+- `readSnapshot(db)` -> `{ createdAt, prodBaseUrl, viewports, stabilize, configJson } | null`
+  (null = no baseline; drives `run`'s auto-detect).
 - `readBaselineImages(db)` -> rows including decoded `Uint8Array` images.
+- `clearBaseline(db)` — truncate `snapshot` + `baseline_images` (used by
+  `snapshot` before writing a fresh one).
 
 ## 3. Snapshot pipeline (`src/commands/snapshot.ts`)
 
-Structure mirrors today's run, but one-sided and writing the baseline store:
+Structure mirrors today's run, but one-sided and writing the baseline tables:
 
 1. Guard: browser installed; load + resolve config (with `--prod`/`--crawl`/
    `--concurrency` overrides).
-2. Fresh baseline DB at `--out` (remove stale file + `-wal`/`-shm` sidecars,
-   as `run` does today).
+2. Open `config.output.db` (create if absent — do **not** delete the file).
+   `clearBaseline(db)`, and clear stale `runs`/`comparisons` (a new baseline
+   invalidates prior dev-run results).
 3. Discover paths from prod (`discoverPaths`, same wiring as `run`, honoring
    `--crawl`).
 4. Fan out path x viewport; `capture(browser, prodUrl, viewport, stabilize)`
    under `mapWithConcurrency(config.concurrency.screenshots)`.
-5. Write each result into `baseline_images` (image on success, `error` row on
-   failure). Write `snapshot` meta (created_at, prod url, viewports, stabilize,
-   full config json).
+5. Write each result via `saveBaselineImage` (image on success, `error` row on
+   failure). Write the `snapshot` row via `writeSnapshot` (created_at, prod url,
+   viewports, stabilize, full config json).
 6. Teardown browser in `finally`.
 
 Reuses existing `launchBrowser`, `capture`, `discoverPaths`,
@@ -125,22 +146,25 @@ discovery threw).
 
 ## 4. Baseline-run pipeline + conflict check
 
-`run --baseline FILE`:
+`run` in baseline mode (auto-detected: `readSnapshot(db)` returns a row):
 
-1. Open baseline read-only; read `snapshot` meta. Missing/unreadable baseline ->
-   exit `2` with a clear message.
-2. **Conflict check** — deep-equal live `config.viewports` vs `viewports_json`
-   **and** live `config.stabilize` vs `stabilize_json`. On mismatch: hard-error,
-   exit `2`, message naming which field differs. (`dev` URL, `concurrency`,
-   `diff.*` thresholds, `output.*` come from live config — legitimately
-   run-specific, not checked.)
+1. Truncate `runs`/`comparisons` only (via `startRun`); baseline tables are
+   preserved.
+2. **Conflict check** — deep-equal live `config.viewports` vs the snapshot's
+   `viewports_json` **and** live `config.stabilize` vs `stabilize_json`. On
+   mismatch: hard-error, exit `2`, message naming which field differs. (`dev`
+   URL, `concurrency`, `diff.*` thresholds, `output.*` come from live config —
+   legitimately run-specific, not checked.)
 3. Jobs = `baseline_images` rows.
    - `ok` row: capture dev at `(path, viewport)`, diff against the stored prod
      `image`, gate against `failScore`/overrides, save a normal comparison.
    - `error` row (prod capture previously failed): record an error comparison
      carrying the prod-side message (consistent with today's one-sided-failure
      handling).
-4. Write `momus-report.html` + `momus.sqlite`, exit code as today.
+4. Write `momus-report.html`, exit code as today.
+
+When `readSnapshot(db)` returns `null`, `run` takes the one-shot path unchanged
+(discover from prod, capture both).
 
 ## 5. Shared pipeline seam (refactor `src/pipeline/run.ts`)
 
@@ -168,28 +192,35 @@ Semantics unchanged from today.
 | --- | --- | --- |
 | `snapshot` | 0 | Baseline written (per-page prod failures stored as error rows). |
 | `snapshot` | 2 | Operational failure (no browser, bad config, discovery threw). |
-| `run --baseline` | 0 | All pages captured and passed. |
-| `run --baseline` | 1 | Any page failed the gate or errored. |
-| `run --baseline` | 2 | Operational failure, incl. baseline-config conflict or unreadable/absent baseline. |
+| `run` (baseline mode) | 0 | All pages captured and passed. |
+| `run` (baseline mode) | 1 | Any page failed the gate or errored. |
+| `run` (baseline mode) | 2 | Operational failure, incl. baseline-config conflict. |
+| `run` (one-shot) | 0/1/2 | Exactly as today. |
 
 ## 7. Testing
 
-- **`baseline.ts` store**: round-trip `snapshot` meta + `baseline_images`
-  (ok + error rows); image BLOB decodes back to bytes.
+- **Store helpers (`db.ts`)**: round-trip `snapshot` row + `baseline_images`
+  (ok + error rows); image BLOB decodes back to bytes; `readSnapshot` returns
+  `null` on a fresh DB; `clearBaseline` empties both tables.
+- **Baseline preserved across run**: after a `run`, the `snapshot` +
+  `baseline_images` rows still exist (run truncated only `runs`/`comparisons`,
+  did not delete the file).
 - **Conflict check**: matching viewports+stabilize passes; differing `viewports`
   errors; differing `stabilize.mask` errors — each exit `2`.
 - **`snapshot` command**: discovers, captures (injected fake capture fn), writes
-  both tables; a prod capture failure becomes an `error` row, run still exits 0.
-- **`run --baseline`**: dev captured only (prod NOT re-captured — assert prod
-  capture fn is never called), prod image pulled from baseline, diff/gate/save
-  correct; a prod `error` baseline row yields an error comparison; missing
-  baseline file -> exit 2.
-- **Backward-compat**: plain `run` (no `--baseline`) still captures both sides
-  and behaves as today.
+  both baseline tables and clears stale run rows; a prod capture failure becomes
+  an `error` row, exits 0.
+- **`run` auto-detect**:
+  - Baseline present: dev captured only (prod NOT re-captured — assert the
+    prod-side capture is never called), prod image pulled from `baseline_images`,
+    diff/gate/save correct; a prod `error` baseline row yields an error
+    comparison.
+  - No baseline: plain `run` still captures both sides and discovers from prod,
+    behaving as today.
 
 ## Out of scope
 
-- Multi-run history / retaining several baselines side by side (single baseline
-  file per invocation; run history remains out of scope per README).
+- Multi-run history / retaining several baselines side by side (one baseline per
+  DB; run history remains out of scope per README).
 - Report annotations for baseline provenance (could later surface
   `snapshot.created_at` in the report header — not required here).
