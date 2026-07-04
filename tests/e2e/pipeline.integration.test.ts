@@ -44,8 +44,13 @@ maybe("dev vs prod: unchanged page passes, changed page fails", async () => {
   try {
     await runPipeline({
       config, db, startedAt: "2026-07-03T00:00:00Z", finishedAt: "2026-07-03T00:01:00Z",
-      discover: async () => ["/", "/about"],
-      captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize),
+      listJobs: async () => ["/", "/about"].flatMap((path) => [1280].map((viewport) => ({
+        path, viewport,
+        devUrl: `http://localhost:${dev.port}${path}`,
+        prodUrl: `http://localhost:${prod.port}${path}`,
+      }))),
+      getDev: (job) => capture(browser, job.devUrl, job.viewport, config.stabilize),
+      getProd: (job) => capture(browser, job.prodUrl, job.viewport, config.stabilize),
       diffPool: pool,
     });
   } finally {

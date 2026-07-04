@@ -12,13 +12,25 @@ export interface DiffPoolLike {
   close(): Promise<void>;
 }
 
+/** One unit of comparison work: a path at a viewport, with both side URLs resolved. */
+export interface Job {
+  path: string;
+  viewport: number;
+  devUrl: string;
+  prodUrl: string;
+}
+
 export interface RunPipelineArgs {
   config: ResolvedConfig;
   db: Database;
   startedAt: string;
   finishedAt?: string;
-  discover: () => Promise<string[]>;
-  captureFn: (url: string, viewport: number, cfg: ResolvedConfig) => Promise<CaptureResult>;
+  /** The comparison jobs to run (one-shot: discovery×viewports; baseline: stored rows). */
+  listJobs: () => Promise<Job[]>;
+  /** Obtain the dev-side image for a job (always a live capture). */
+  getDev: (job: Job) => Promise<CaptureResult>;
+  /** Obtain the prod-side image for a job (live capture, or read from the baseline store). */
+  getProd: (job: Job) => Promise<CaptureResult>;
   diffPool: DiffPoolLike;
 }
 
@@ -30,25 +42,16 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
   });
 
   try {
-    const paths = await args.discover();
-    // Fan out into path × viewport jobs.
-    const jobs = paths.flatMap((path) =>
-      config.viewports.map((viewport) => ({ path, viewport })));
+    const jobs = await args.listJobs();
 
     await mapWithConcurrency(jobs, config.concurrency.screenshots, async (job) => {
-      const devUrl = new URL(job.path, config.dev).toString();
-      const prodUrl = new URL(job.path, config.prod).toString();
       const rec: ComparisonRecord = {
-        path: job.path, viewport: job.viewport, devUrl, prodUrl, status: "ok",
+        path: job.path, viewport: job.viewport, devUrl: job.devUrl, prodUrl: job.prodUrl, status: "ok",
       };
-      // Per-job guard: an unexpected throw from a seam (captureFn/diffPool) must
-      // be recorded as an error comparison, never propagated — one bad page must
-      // not abort the whole run (spec §3).
+      // Per-job guard: an unexpected throw from a seam must be recorded as an
+      // error comparison, never propagated — one bad page must not abort the run.
       try {
-        const [dev, prod] = await Promise.all([
-          args.captureFn(devUrl, job.viewport, config),
-          args.captureFn(prodUrl, job.viewport, config),
-        ]);
+        const [dev, prod] = await Promise.all([args.getDev(job), args.getProd(job)]);
 
         if (!dev.ok || !prod.ok) {
           rec.status = "error";
@@ -77,14 +80,13 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
       }
     });
   } catch (err) {
-    // discover() or the fan-out itself failed unexpectedly: record a terminal
-    // status so the run row is never orphaned at "running", then re-throw so the
-    // CLI can still surface the failure.
+    // listJobs() or the fan-out failed unexpectedly: record a terminal status so
+    // the run row is never orphaned at "running", then re-throw for the CLI.
     finishRun(db, runId, "failed", args.finishedAt ?? new Date().toISOString());
     throw err;
   }
 
-  // NOTE: diffPool.close() is intentionally NOT called here — the CLI caller
-  // (Chunk 7) owns the pool lifecycle, symmetric with owning discover/captureFn.
+  // diffPool.close() is intentionally NOT called here — the CLI caller owns the
+  // pool lifecycle, symmetric with owning listJobs/getDev/getProd.
   finishRun(db, runId, "complete", args.finishedAt ?? new Date().toISOString());
 }

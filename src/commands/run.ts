@@ -6,11 +6,10 @@ import { capture } from "../capture/screenshot";
 import { discoverPaths } from "../discovery/discover";
 import { DiffPool } from "../diff/pool";
 import { openDb, readComparisons } from "../store/db";
-import { runPipeline } from "../pipeline/run";
+import { runPipeline, type Job } from "../pipeline/run";
 import { exitCodeFor } from "../pipeline/verdict";
 import { writeReport } from "../report/report";
 import type { ResolvedConfig } from "../config/schema";
-import type { CaptureResult } from "../types";
 
 export async function runCommand(parsed: ParsedCli): Promise<number> {
   if (!isBrowserInstalled()) {
@@ -48,19 +47,25 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   try {
     await runPipeline({
       config, db, startedAt: new Date().toISOString(),
-      discover: () => discoverPaths({
-        base: config.prod,
-        // `--crawl` must force a link crawl even when prod has a sitemap
-        // (spec §2). Since crawl only runs when the sitemap yields no paths, we
-        // disable sitemap discovery for this run so the crawl path is taken.
-        sitemap: parsed.overrides.crawl ? false : config.discovery.sitemap,
-        crawl: { enabled: config.discovery.crawl.enabled, startPath: config.discovery.crawl.startPath,
-                 maxDepth: config.discovery.crawl.maxDepth, maxPages: config.discovery.crawl.maxPages },
-        include: config.discovery.include, exclude: config.discovery.exclude,
-        fetcher: realFetch,
-      }),
-      captureFn: (url: string, vw: number, cfg: ResolvedConfig): Promise<CaptureResult> =>
-        capture(browser, url, vw, cfg.stabilize),
+      listJobs: async (): Promise<Job[]> => {
+        const paths = await discoverPaths({
+          base: config.prod,
+          // `--crawl` forces a link crawl even when prod has a sitemap: disable
+          // sitemap discovery for this run so the crawl path is taken.
+          sitemap: parsed.overrides.crawl ? false : config.discovery.sitemap,
+          crawl: { enabled: config.discovery.crawl.enabled, startPath: config.discovery.crawl.startPath,
+                   maxDepth: config.discovery.crawl.maxDepth, maxPages: config.discovery.crawl.maxPages },
+          include: config.discovery.include, exclude: config.discovery.exclude,
+          fetcher: realFetch,
+        });
+        return paths.flatMap((path) => config.viewports.map((viewport) => ({
+          path, viewport,
+          devUrl: new URL(path, config.dev).toString(),
+          prodUrl: new URL(path, config.prod).toString(),
+        })));
+      },
+      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize),
+      getProd: (job: Job) => capture(browser, job.prodUrl, job.viewport, config.stabilize),
       diffPool,
     });
   } catch (err) {
