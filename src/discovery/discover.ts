@@ -24,6 +24,10 @@ export async function discoverPaths(args: DiscoverArgs): Promise<string[]> {
   if (args.sitemap) {
     paths = await sitemapFn(args.base, args.fetcher);
   }
+  // Conscious decision: the crawl fallback triggers only when the RAW sitemap
+  // result is empty — measured BEFORE include/exclude filtering. A non-empty
+  // sitemap is authoritative: if all its URLs are later filtered out, we do NOT
+  // crawl; we instead throw "no pages discovered" below.
   if (paths.length === 0 && args.crawl.enabled) {
     paths = await crawlFn(args.base, args.crawl.startPath,
       { maxDepth: args.crawl.maxDepth, maxPages: args.crawl.maxPages }, args.fetcher);

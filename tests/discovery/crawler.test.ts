@@ -28,6 +28,17 @@ test("BFS discovers same-domain links up to depth", async () => {
   expect(paths.sort()).toEqual(["/", "/a", "/b", "/c"]);
 });
 
+test("keeps links with fragments, stripping the fragment but keeping the query", async () => {
+  const fetcher = fakeFetch({
+    "https://www.example.com/": html(["/docs?v=2#install"]),
+    "https://www.example.com/docs?v=2": html([]),
+  });
+  const paths = await crawlPaths("https://www.example.com", "/", {
+    maxDepth: 2, maxPages: 100,
+  }, fetcher);
+  expect(paths.sort()).toEqual(["/", "/docs?v=2"]);
+});
+
 test("respects maxPages", async () => {
   const fetcher = fakeFetch({
     "https://www.example.com/": html(["/a", "/b", "/c"]),

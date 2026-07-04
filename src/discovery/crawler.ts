@@ -4,8 +4,10 @@ import type { Fetcher } from "./sitemap";
 export interface CrawlOptions { maxDepth: number; maxPages: number }
 
 function extractHrefs(html: string): string[] {
-  // matchAll avoids stateful RegExp; group 1 is the href value.
-  return [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"'#]+)["']/gi)].map((m) => m[1]!);
+  // matchAll avoids stateful RegExp; group 1 is the href value. Capture the full
+  // href (including any #fragment) so fragmented links aren't dropped; the URL
+  // parser in crawlPaths strips the fragment via `abs.pathname + abs.search`.
+  return [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]!);
 }
 
 /** Same-domain breadth-first crawl. Returns discovered paths (incl. start). */
