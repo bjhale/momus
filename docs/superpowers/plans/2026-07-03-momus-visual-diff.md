@@ -1136,14 +1136,18 @@ Expected: FAIL — module not found.
 
 ```ts
 // src/capture/browser.ts
-import { chromium, type Browser, type BrowserContext } from "playwright-core";
-import { executablePath } from "playwright";
+// NOTE (from Chunk 0 spike): import `chromium` from the full `playwright`
+// package (NOT playwright-core). It auto-resolves the Chromium it installed, so
+// launch() needs no explicit executablePath, and `chromium.executablePath()` is
+// a METHOD (there is no top-level `executablePath` export).
+import { chromium } from "playwright";
+import type { Browser, BrowserContext } from "playwright-core";
 import { existsSync } from "node:fs";
 
 /** True if the pinned Chromium executable exists on disk. */
 export function isBrowserInstalled(): boolean {
   try {
-    const p = executablePath();
+    const p = chromium.executablePath();
     return typeof p === "string" && p.length > 0 && existsSync(p);
   } catch {
     return false;
@@ -1151,7 +1155,7 @@ export function isBrowserInstalled(): boolean {
 }
 
 export async function launchBrowser(): Promise<Browser> {
-  return chromium.launch({ executablePath: executablePath(), headless: true });
+  return chromium.launch({ headless: true });
 }
 
 export async function newContext(browser: Browser, viewportWidth: number): Promise<BrowserContext> {
@@ -2800,10 +2804,17 @@ git commit -m "feat: add run command wiring"
 // build.ts
 // Compiles momus to a single binary. Playwright browser remains external
 // (installed via `momus install-browser`), per spec §1/§7.
+//
+// `chromium-bidi` MUST be external (confirmed by the Chunk 0 spike): Playwright's
+// playwright-core has dynamic require()s for the WebDriver-BiDi transport that
+// Bun's bundler cannot resolve statically, so the compile fails without this.
+// We drive Chromium over CDP (the default), so the BiDi path is never taken at
+// runtime and externalizing it is safe.
 const result = await Bun.build({
   entrypoints: ["src/cli.ts"],
   compile: { outfile: "momus" },
   target: "bun",
+  external: ["chromium-bidi"],
 });
 if (!result.success) {
   for (const log of result.logs) console.error(log);
@@ -2815,7 +2826,7 @@ console.log("Built ./momus");
 - [ ] **Step 2: Build the binary**
 
 Run: `bun run build.ts`
-Expected: prints `Built ./momus` and creates an executable `momus`. (If the `Bun.build` compile option differs in the installed Bun version, fall back to the CLI form: `bun build src/cli.ts --compile --outfile momus`, and change the `build` npm script accordingly.)
+Expected: prints `Built ./momus` and creates an executable `momus`. (If the `Bun.build` compile option differs in the installed Bun version, fall back to the CLI form: `bun build src/cli.ts --compile --external chromium-bidi --outfile momus`, and change the `build` npm script accordingly.)
 
 - [ ] **Step 3: Smoke-test the binary's help**
 
