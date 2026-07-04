@@ -1,6 +1,7 @@
 // src/store/db.ts
 import { Database } from "bun:sqlite";
 import type { ComparisonRecord } from "../types";
+import type { StabilizeOptions } from "../capture/screenshot";
 
 // DDL inlined as a string constant (NOT read from a .sql file at runtime) so it
 // is embedded in the `bun build --compile` binary. See the note above Step 1.
@@ -36,6 +37,25 @@ CREATE TABLE IF NOT EXISTS comparisons (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comparisons_score ON comparisons(run_id, diff_score DESC);
+
+CREATE TABLE IF NOT EXISTS snapshot (
+  id             INTEGER PRIMARY KEY,
+  created_at     TEXT NOT NULL,
+  prod_base_url  TEXT NOT NULL,
+  viewports_json TEXT NOT NULL,
+  stabilize_json TEXT NOT NULL,
+  config_json    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS baseline_images (
+  path      TEXT NOT NULL,
+  viewport  INTEGER NOT NULL,
+  prod_url  TEXT NOT NULL,
+  image     BLOB,
+  status    TEXT NOT NULL,
+  error     TEXT,
+  UNIQUE(path, viewport)
+);
 `;
 
 export function openDb(path: string): Database {
@@ -93,4 +113,68 @@ export function readComparisons(db: Database, runId: number): ComparisonRow[] {
     passed: x.passed === null ? undefined : x.passed === 1,
     status: x.status, error: x.error ?? undefined,
   }));
+}
+
+export interface SnapshotMeta {
+  createdAt: string;
+  prodBaseUrl: string;
+  viewports: number[];
+  stabilize: StabilizeOptions;
+  configJson: string;
+}
+
+export function writeSnapshot(db: Database, m: SnapshotMeta): void {
+  db.exec("DELETE FROM snapshot;");
+  db.query(
+    `INSERT INTO snapshot (id, created_at, prod_base_url, viewports_json, stabilize_json, config_json)
+     VALUES (1, ?, ?, ?, ?, ?)`,
+  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson);
+}
+
+export function readSnapshot(db: Database): SnapshotMeta | null {
+  const row = db.query("SELECT * FROM snapshot WHERE id = 1").get() as any;
+  if (!row) return null;
+  return {
+    createdAt: row.created_at,
+    prodBaseUrl: row.prod_base_url,
+    viewports: JSON.parse(row.viewports_json),
+    stabilize: JSON.parse(row.stabilize_json),
+    configJson: row.config_json,
+  };
+}
+
+export interface BaselineImageRow {
+  path: string;
+  viewport: number;
+  prodUrl: string;
+  image?: Uint8Array;
+  status: "ok" | "error";
+  error?: string;
+}
+
+export function saveBaselineImage(db: Database, r: BaselineImageRow): void {
+  db.query(
+    `INSERT OR REPLACE INTO baseline_images (path, viewport, prod_url, image, status, error)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(r.path, r.viewport, r.prodUrl, r.image ?? null, r.status, r.error ?? null);
+}
+
+export function readBaselineImages(db: Database): BaselineImageRow[] {
+  const rows = db.query("SELECT * FROM baseline_images ORDER BY path, viewport").all() as any[];
+  return rows.map((x) => ({
+    path: x.path,
+    viewport: x.viewport,
+    prodUrl: x.prod_url,
+    image: x.image ? new Uint8Array(x.image) : undefined,
+    status: x.status,
+    error: x.error ?? undefined,
+  }));
+}
+
+export function clearBaseline(db: Database): void {
+  db.exec("DELETE FROM baseline_images; DELETE FROM snapshot;");
+}
+
+export function clearRuns(db: Database): void {
+  db.exec("DELETE FROM comparisons; DELETE FROM runs;");
 }
