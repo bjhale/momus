@@ -16,7 +16,7 @@ export interface RunPipelineArgs {
   config: ResolvedConfig;
   db: Database;
   startedAt: string;
-  finishedAt: string;
+  finishedAt?: string;
   discover: () => Promise<string[]>;
   captureFn: (url: string, viewport: number, cfg: ResolvedConfig) => Promise<CaptureResult>;
   diffPool: DiffPoolLike;
@@ -80,11 +80,11 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
     // discover() or the fan-out itself failed unexpectedly: record a terminal
     // status so the run row is never orphaned at "running", then re-throw so the
     // CLI can still surface the failure.
-    finishRun(db, runId, "failed", args.finishedAt);
+    finishRun(db, runId, "failed", args.finishedAt ?? new Date().toISOString());
     throw err;
   }
 
   // NOTE: diffPool.close() is intentionally NOT called here — the CLI caller
   // (Chunk 7) owns the pool lifecycle, symmetric with owning discover/captureFn.
-  finishRun(db, runId, "complete", args.finishedAt);
+  finishRun(db, runId, "complete", args.finishedAt ?? new Date().toISOString());
 }

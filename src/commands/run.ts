@@ -42,10 +42,12 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
     return { ok: r.ok, status: r.status, text: () => r.text() };
   };
 
-  const now = new Date().toISOString();
+  // Teardown runs in `finally` so both handles always close, even if one close
+  // rejects or writeReport throws: `browser.close()` must not be skipped when
+  // `diffPool.close()` fails, hence the independent `.catch()` guards.
   try {
     await runPipeline({
-      config, db, startedAt: now, finishedAt: new Date().toISOString(),
+      config, db, startedAt: new Date().toISOString(),
       discover: () => discoverPaths({
         base: config.prod,
         sitemap: config.discovery.sitemap,
@@ -60,12 +62,11 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
     });
   } catch (err) {
     console.error(`Run failed: ${err instanceof Error ? err.message : err}`);
-    await diffPool.close();
-    await browser.close();
     return 2;
+  } finally {
+    await diffPool.close().catch(() => {});
+    await browser.close().catch(() => {});
   }
-  await diffPool.close();
-  await browser.close();
 
   await writeReport(db, 1, config.output.report);
   const rows = readComparisons(db, 1);

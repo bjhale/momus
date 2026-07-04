@@ -38,25 +38,32 @@ export function parseCliArgs(argv: string[]): ParsedCli {
 
 // --- Runtime dispatch (integration test covers it, not unit tests) ---
 async function main(): Promise<void> {
-  const parsed = parseCliArgs(process.argv.slice(2));
-  switch (parsed.command) {
-    case "init": {
-      const { runInit } = await import("./commands/init");
-      const path = await runInit(process.cwd());
-      console.log(`Created ${path}`);
-      return;
+  try {
+    const parsed = parseCliArgs(process.argv.slice(2));
+    switch (parsed.command) {
+      case "init": {
+        const { runInit } = await import("./commands/init");
+        const path = await runInit(process.cwd());
+        console.log(`Created ${path}`);
+        return;
+      }
+      case "install-browser": {
+        const { installBrowser } = await import("./commands/install");
+        process.exit(await installBrowser());
+      }
+      case "run": {
+        const { runCommand } = await import("./commands/run");
+        process.exit(await runCommand(parsed));
+      }
+      default:
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--crawl]`);
+        process.exit(0);
     }
-    case "install-browser": {
-      const { installBrowser } = await import("./commands/install");
-      process.exit(await installBrowser());
-    }
-    case "run": {
-      const { runCommand } = await import("./commands/run");
-      process.exit(await runCommand(parsed));
-    }
-    default:
-      console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--crawl]`);
-      process.exit(0);
+  } catch (err) {
+    // init's "already exists" and parseArgs' unknown-flag errors should surface
+    // as a clean one-line message, not a raw stack trace.
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(2);
   }
 }
 
