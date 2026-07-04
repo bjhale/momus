@@ -44,7 +44,7 @@ screenshots, diff images, and scores as BLOBs instead of using the filesystem.
 | Page pairing | By URL path: the same path is requested on both base URLs. |
 | Diff method | pixelmatch diff **image** plus a numeric difference **score**. |
 | Capture | Full-page screenshots at multiple configurable viewport widths. |
-| Browser | Playwright; Chromium auto-downloaded on first run / via `momus install-browser`. |
+| Browser | Playwright/Chromium, installed explicitly via `momus install-browser`. `momus run` never downloads mid-run: if the pinned Chromium is absent it prints guidance and exits non-zero (CI-friendly). |
 | Storage | `bun:sqlite`, images as BLOBs, single-run DB overwritten each run. |
 | Report | Self-contained HTML (images inlined as base64 data URIs). |
 | Stability | Wait for network-idle + settle delay, disable animations, mask configured CSS selectors. |
@@ -82,6 +82,14 @@ loop, with a Worker-thread pool hanging off the diff stage.
 1. **Discovery** — fetch/parse `sitemap.xml` (recursing into sitemap index
    files); if absent or `--crawl`, follow same-domain links from a start URL up
    to a depth limit. Apply include/exclude globs. Emit a deduped set of paths.
+   > **Discovery source is a single side (v1).** The sitemap is fetched from the
+   > `prod` base URL (treated as the source of truth for the page set); the crawl
+   > fallback likewise runs against one side. The same discovered paths are then
+   > requested on **both** dev and prod. Consequence: a page that exists **only**
+   > on dev (e.g. a brand-new unreleased page not yet in prod's sitemap) is not
+   > discovered or compared in v1. This is intentional — momus reports drift on
+   > the known page set. A prod page missing on dev is handled by the "page fails
+   > to load on one side" path (§7).
 2. **Job fan-out** — expand each path into one job per configured viewport width
    → `path × viewport` jobs onto a bounded queue.
 3. **Screenshot pool** — a semaphore of size *N* drives *N* concurrent Playwright
@@ -157,8 +165,8 @@ momus/
 
 - **Runtime/build:** Bun + TypeScript; `bun build --compile` for the binary;
   `bun:test` for tests.
-- **Browser:** Playwright (auto-download Chromium on first run / `momus
-  install-browser`).
+- **Browser:** Playwright/Chromium, installed explicitly via `momus
+  install-browser` (never auto-downloaded during `momus run`; see §7).
 - **Diffing:** `pixelmatch` + `pngjs` (decode PNG buffers to raw pixels).
 - **DB:** `bun:sqlite` (built in).
 - **Config validation:** `zod`.
@@ -172,7 +180,16 @@ momus/
 - `momus init` — scaffold a commented `momus.config.ts`.
 - `momus run [--dev URL] [--prod URL] [--out report.html] [--crawl] [--concurrency N]`
   — run the full pipeline.
-- `momus install-browser` — fetch the pinned Chromium.
+- `momus install-browser` — fetch the pinned Chromium. This is the **only**
+  command that downloads a browser; `momus run` never does.
+
+### `--concurrency` flag mapping
+
+`--concurrency N` sets the **screenshot** pool size (`concurrency.screenshots`),
+the primary throughput knob. It does **not** change `concurrency.diffWorkers`;
+tune diff-worker count via the config file. If a user needs both, they set them
+in config. (Rationale: the screenshot pool is the usual bottleneck and the one
+users reach for on the command line.)
 
 ## 5. Data Model (SQLite)
 
@@ -252,6 +269,7 @@ export default defineConfig({
   stabilize: {
     waitUntil: "networkidle",
     settleMs: 500,               // extra delay after idle
+    timeoutMs: 15000,            // hard cap on nav + network-idle wait; capture anyway on expiry
     disableAnimations: true,
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],  // hidden before shot
   },
@@ -285,7 +303,17 @@ CLI flags → config file → built-in defaults. `--dev`, `--prod`, `--out`,
 
 ### Path globs
 
-`include` / `exclude` / override `path` are matched against the URL path.
+`include` / `exclude` / override `path` are matched against the URL path via a
+single internal predicate `matchPath(path: string, pattern: string): boolean`.
+This interface is pinned regardless of the backing implementation (`picomatch`
+vs. a tiny inline matcher, decided during implementation), so glob-matching and
+override-resolution tests target the predicate, not the library.
+
+### Output overwrite behavior
+
+Both the SQLite DB and the HTML report at the configured `output.report` path are
+**overwritten** if they already exist (consistent with single-run mode). momus
+does not prompt or refuse; it is safe to re-run repeatedly to the same paths.
 
 ## 7. Error Handling & Edge Cases
 
@@ -300,8 +328,8 @@ CLI flags → config file → built-in defaults. `--dev`, `--prod`, `--out`,
   row with `status='error'` + message, compute no diff, surface it in the report
   as an explicit error card. One bad page never aborts the run.
 - **`networkidle` never settles** (long-polling, analytics beacons): cap the
-  stabilize wait with a hard timeout, then capture anyway and log a warning on
-  that comparison.
+  stabilize wait with the `stabilize.timeoutMs` hard timeout (default 15000ms),
+  then capture anyway and log a warning on that comparison.
 - **Browser missing / wrong version:** `momus run` checks for the pinned Chromium
   up front; if absent, print a clear message pointing to `momus install-browser`
   and exit non-zero (no silent auto-download mid-run — explicit is friendlier in
