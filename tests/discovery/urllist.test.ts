@@ -43,3 +43,7 @@ test("trailing slash on prod base is normalized", () => {
   expect(parseUrlList("https://www.example.com/pricing", "https://www.example.com/"))
     .toEqual(["/pricing"]);
 });
+
+test("uppercase scheme under prod base is accepted", () => {
+  expect(parseUrlList("HTTPS://www.example.com/pricing", PROD)).toEqual(["/pricing"]);
+});

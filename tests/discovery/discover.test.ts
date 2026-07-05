@@ -135,6 +135,15 @@ test("crawl enabled seeds from the urlList ∪ sitemap union (urlList first)", a
   expect(paths).toEqual(["/a", "/b", "/discovered"]);
 });
 
+test("an off-base urlList URL propagates as an error", async () => {
+  await expect(discoverPaths({
+    base: "https://www.example.com", urlList: "urls.txt", sitemap: false, maxPages: 500,
+    crawl: { enabled: false, startPath: "/", maxDepth: 2 },
+    include: ["/**"], exclude: [], fetcher,
+    _readUrlList: async () => "https://other.example.org/x",
+  })).rejects.toThrow(/not under prod base/);
+});
+
 test("crawl enabled with no seeds falls back to [startPath]; cap+keep threaded", async () => {
   let seenStarts: string[] | undefined;
   let receivedMaxPages: number | undefined;

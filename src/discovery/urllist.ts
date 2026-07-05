@@ -19,7 +19,9 @@ export function parseUrlList(content: string, prodBase: string): string[] {
       // Full URL: must start with the prod base, and the next char must be a
       // path/query/fragment boundary (so "https://a.com" doesn't match
       // "https://a.com.evil/…").
-      const rest = line.startsWith(pb) ? line.slice(pb.length) : null;
+      // Scheme + host are case-insensitive; compare case-folded but slice the
+      // original line so the path keeps its case.
+      const rest = line.toLowerCase().startsWith(pb.toLowerCase()) ? line.slice(pb.length) : null;
       if (rest === null || !(rest === "" || rest[0] === "/" || rest[0] === "?" || rest[0] === "#")) {
         throw new Error(`urlList entry not under prod base ${prodBase}: ${line}`);
       }

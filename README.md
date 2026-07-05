@@ -191,7 +191,9 @@ Notes:
   (or `crawl.startPath` when those are empty) and expands via same-origin links.
   `maxPages` caps the total pages compared — the first N that survive
   `include`/`exclude`, in discovery order — across every source (`0` = no cap).
-  Override per run with `--max-pages N`.
+  Override per run with `--max-pages N`. `dev` and `prod` are treated as
+  origins — a path prefix on the base URL is not preserved when joining
+  discovered paths.
 - **`failScore`** is the fraction of a page's pixels that may differ before the
   page fails. A page passes when its diff score is `<= failScore`. `overrides`
   apply a different gate to matching path globs.
