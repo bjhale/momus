@@ -228,8 +228,11 @@ Notes:
 3. **Diff** — compare the two PNGs in a pool of worker threads (pixelmatch),
    producing a diff image and a diff score.
 4. **Gate** — mark each page pass/fail against `failScore` (or a path override).
-5. **Report** — write a self-contained `momus-report.html`, worst pages first,
-   and exit with the code above.
+5. **Report** — write a self-contained `momus-report.html`: a summary header
+   (pass/fail verdict, counts, worst page, viewports) with an All/Passed/Failed
+   filter, and each comparison as a collapsible accordion (page, width, change %,
+   pass/fail) that expands to the `dev | prod | diff` screenshots — worst pages
+   first. Then exit with the code above.
 
 While capturing and diffing, momus renders a progress bar to **stderr** — one
 phase for prod capture (on a fresh baseline) and one for dev capture + diff. In a
