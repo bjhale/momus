@@ -10,6 +10,7 @@ export interface CliOverrides {
   concurrency?: number;
   crawl?: boolean;
   maxPages?: number;
+  insecure?: boolean;
 }
 
 /** Merge file config + CLI overrides, then validate. CLI wins (spec §6). */
@@ -34,6 +35,7 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
       crawl: { ...crawlObj, enabled: cli.crawl },
     };
   }
+  if (cli.insecure !== undefined) merged.insecure = cli.insecure;
   return ConfigSchema.parse(merged);
 }
 

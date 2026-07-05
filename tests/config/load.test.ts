@@ -55,3 +55,9 @@ test("--crawl forces enabled while preserving existing crawl object fields", () 
   );
   expect(c.discovery.crawl).toEqual({ enabled: true, startPath: "/", maxDepth: 5 });
 });
+
+test("--insecure overrides config.insecure (CLI wins)", () => {
+  expect(resolveConfig(base, { insecure: true }).insecure).toBe(true);
+  expect(resolveConfig({ ...base, insecure: false }, { insecure: true }).insecure).toBe(true);
+  expect(resolveConfig(base, {}).insecure).toBe(false); // default
+});

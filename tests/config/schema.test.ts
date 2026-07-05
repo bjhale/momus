@@ -66,3 +66,10 @@ test("discovery.urlList is optional and passes through", () => {
   const without = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
   expect(without.discovery.urlList).toBeUndefined();
 });
+
+test("insecure defaults to false and accepts true", () => {
+  const d = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
+  expect(d.insecure).toBe(false);
+  const t = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", insecure: true });
+  expect(t.insecure).toBe(true);
+});

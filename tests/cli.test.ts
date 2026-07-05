@@ -31,3 +31,8 @@ test("parses --max-pages into overrides", () => {
   const p = parseCliArgs(["run", "--max-pages", "50"]);
   expect(p.overrides.maxPages).toBe(50);
 });
+
+test("parses --insecure", () => {
+  expect(parseCliArgs(["run", "--insecure"]).overrides.insecure).toBe(true);
+  expect(parseCliArgs(["run"]).overrides.insecure).toBeUndefined();
+});

@@ -23,6 +23,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       concurrency: { type: "string" },
       crawl: { type: "boolean" },
       "max-pages": { type: "string" },
+      insecure: { type: "boolean" },
     },
     allowPositionals: true,
   });
@@ -34,6 +35,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   if (values.concurrency) overrides.concurrency = Number(values.concurrency);
   if (values["max-pages"]) overrides.maxPages = Number(values["max-pages"]);
   if (values.crawl) overrides.crawl = true;
+  if (values.insecure) overrides.insecure = true;
 
   return { command, overrides, configPath: values.config as string | undefined };
 }
@@ -62,7 +64,7 @@ async function main(): Promise<void> {
         process.exit(await snapshotCommand(parsed));
       }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure]`);
         process.exit(0);
     }
   } catch (err) {

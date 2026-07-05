@@ -4,6 +4,7 @@ import { z } from "zod";
 export const ConfigSchema = z.object({
   dev: z.string().url(),
   prod: z.string().url(),
+  insecure: z.boolean().default(false),
   discovery: z.object({
     urlList: z.string().optional(),
     sitemap: z.boolean().default(true),
