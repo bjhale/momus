@@ -96,6 +96,7 @@ frozen prod capture that `momus run` reuses.
 | `--concurrency N` | Override the number of concurrent screenshots. |
 | `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
 | `--crawl` | Force same-origin crawl discovery on. |
+| `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
 
 The baseline lives in its own tables inside `output.db`; the single SQLite file
 is the portable artifact — commit it or pass it as a CI artifact.
@@ -126,6 +127,7 @@ run; the baseline is preserved.
 | `--concurrency N` | Override the number of concurrent screenshots. |
 | `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
 | `--crawl` | Force same-origin crawl discovery on. |
+| `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
 
 CLI flags win over config-file values.
 
@@ -147,6 +149,7 @@ import { defineConfig } from "momus";
 export default defineConfig({
   dev: "https://dev.example.com",   // the build under test
   prod: "https://www.example.com",  // the baseline; also the discovery source
+  insecure: false,                  // set true to ignore invalid/self-signed TLS certs (dev only)
 
   discovery: {
     // urlList: "urls.txt",                                  // optional: newline-delimited full URLs or paths
@@ -199,6 +202,10 @@ Notes:
   apply a different gate to matching path globs.
 - **`mask`** selectors are hidden before capture so inherently dynamic regions
   (carousels, ads, timestamps) don't produce false diffs.
+- **`insecure`** disables TLS certificate validation for both the discovery
+  fetches and the browser page loads — for self-signed dev/staging servers. It
+  removes MITM protection, so it defaults to `false` and should stay off against
+  anything reachable by others; prefer a properly-issued cert or a trusted CA.
 
 ## Exit codes
 

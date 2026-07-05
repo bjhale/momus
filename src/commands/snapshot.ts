@@ -4,6 +4,7 @@ import { loadConfigFile, resolveConfig } from "../config/load";
 import { isBrowserInstalled, launchBrowser } from "../capture/browser";
 import { capture } from "../capture/screenshot";
 import { discoverPaths } from "../discovery/discover";
+import { makeFetcher } from "../discovery/fetcher";
 import { openDb, readBaselineImages } from "../store/db";
 import { snapshotPipeline } from "../pipeline/snapshot";
 import type { ResolvedConfig } from "../config/schema";
@@ -29,10 +30,7 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   const db = openDb(config.output.db);
   const browser = await launchBrowser();
 
-  const realFetch = async (url: string) => {
-    const r = await fetch(url);
-    return { ok: r.ok, status: r.status, text: () => r.text() };
-  };
+  const realFetch = makeFetcher(config.insecure);
 
   try {
     await snapshotPipeline({
@@ -47,7 +45,7 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
-      captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize),
+      captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure),
     });
   } catch (err) {
     console.error(`Snapshot failed: ${err instanceof Error ? err.message : err}`);

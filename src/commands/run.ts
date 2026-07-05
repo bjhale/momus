@@ -4,6 +4,7 @@ import { loadConfigFile, resolveConfig } from "../config/load";
 import { isBrowserInstalled, launchBrowser } from "../capture/browser";
 import { capture } from "../capture/screenshot";
 import { discoverPaths } from "../discovery/discover";
+import { makeFetcher } from "../discovery/fetcher";
 import { DiffPool } from "../diff/pool";
 import { openDb, readComparisons, readBaselineImages } from "../store/db";
 import { runFlow, type RunFlowResult } from "../pipeline/run-flow";
@@ -34,10 +35,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   const browser = await launchBrowser();
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
 
-  const realFetch = async (url: string) => {
-    const r = await fetch(url);
-    return { ok: r.ok, status: r.status, text: () => r.text() };
-  };
+  const realFetch = makeFetcher(config.insecure);
 
   // Teardown runs in `finally` so both handles always close, even if one close
   // rejects: `browser.close()` must not be skipped when `diffPool.close()` fails.
@@ -55,8 +53,8 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
-      captureProd: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize),
-      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize),
+      captureProd: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure),
+      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure),
       diffPool,
     });
   } catch (err) {

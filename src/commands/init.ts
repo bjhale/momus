@@ -9,6 +9,7 @@ export function configScaffold(): string {
   return `export default {
   dev: "https://dev.example.com",
   prod: "https://www.example.com",
+  // insecure: false,   // set true to ignore invalid/self-signed TLS certs (dev only)
 
   discovery: {
     // urlList: "urls.txt",   // optional: newline-delimited full URLs or paths
