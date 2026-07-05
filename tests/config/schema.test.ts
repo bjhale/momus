@@ -59,3 +59,10 @@ test("legacy crawl.maxPages is ignored without error", () => {
   expect(c.discovery.crawl).toEqual({ enabled: true, startPath: "/", maxDepth: 3 });
   expect((c.discovery.crawl as any).maxPages).toBeUndefined();
 });
+
+test("discovery.urlList is optional and passes through", () => {
+  const withList = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", discovery: { urlList: "urls.txt" } });
+  expect(withList.discovery.urlList).toBe("urls.txt");
+  const without = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
+  expect(without.discovery.urlList).toBeUndefined();
+});

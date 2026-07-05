@@ -5,6 +5,7 @@ export const ConfigSchema = z.object({
   dev: z.string().url(),
   prod: z.string().url(),
   discovery: z.object({
+    urlList: z.string().optional(),
     sitemap: z.boolean().default(true),
     maxPages: z.number().int().nonnegative().default(500), // 0 = unlimited
     crawl: z.union([

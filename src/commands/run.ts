@@ -47,10 +47,9 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
       config, db, now: new Date().toISOString(),
       discover: () => discoverPaths({
         base: config.prod,
+        urlList: config.discovery.urlList,
         maxPages: config.discovery.maxPages,
-        // `--crawl` forces a link crawl even when prod has a sitemap: disable
-        // sitemap discovery for this run so the crawl path is taken.
-        sitemap: parsed.overrides.crawl ? false : config.discovery.sitemap,
+        sitemap: config.discovery.sitemap,
         crawl: { enabled: config.discovery.crawl.enabled, startPath: config.discovery.crawl.startPath,
                  maxDepth: config.discovery.crawl.maxDepth },
         include: config.discovery.include, exclude: config.discovery.exclude,
