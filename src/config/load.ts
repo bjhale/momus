@@ -9,6 +9,7 @@ export interface CliOverrides {
   out?: string;
   concurrency?: number;
   crawl?: boolean;
+  maxPages?: number;
 }
 
 /** Merge file config + CLI overrides, then validate. CLI wins (spec §6). */
@@ -21,6 +22,9 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
   }
   if (cli.concurrency !== undefined) {
     merged.concurrency = { ...(merged.concurrency ?? {}), screenshots: cli.concurrency };
+  }
+  if (cli.maxPages !== undefined) {
+    merged.discovery = { ...(merged.discovery ?? {}), maxPages: cli.maxPages };
   }
   if (cli.crawl !== undefined) {
     const existing = merged.discovery?.crawl;

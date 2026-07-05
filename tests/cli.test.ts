@@ -26,3 +26,8 @@ test("parses snapshot subcommand with overrides", () => {
   expect(p.overrides.concurrency).toBe(4);
   expect(p.overrides.crawl).toBe(true);
 });
+
+test("parses --max-pages into overrides", () => {
+  const p = parseCliArgs(["run", "--max-pages", "50"]);
+  expect(p.overrides.maxPages).toBe(50);
+});

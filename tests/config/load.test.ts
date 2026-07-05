@@ -25,6 +25,16 @@ test("no overrides yields file + defaults", () => {
   expect(c.output.report).toBe("momus-report.html");
 });
 
+test("--max-pages overrides discovery.maxPages", () => {
+  const c = resolveConfig(base, { maxPages: 42 });
+  expect(c.discovery.maxPages).toBe(42);
+});
+
+test("maxPages 0 override is honored (not treated as absent)", () => {
+  const c = resolveConfig(base, { maxPages: 0 });
+  expect(c.discovery.maxPages).toBe(0);
+});
+
 test("loadConfigFile loads a JSON config via a cwd-relative path", async () => {
   // Relative to process.cwd() (repo root), NOT relative to load.ts.
   const relPath = "momus.test-fixture.config.json";
