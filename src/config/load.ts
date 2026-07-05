@@ -23,9 +23,11 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
     merged.concurrency = { ...(merged.concurrency ?? {}), screenshots: cli.concurrency };
   }
   if (cli.crawl !== undefined) {
+    const existing = merged.discovery?.crawl;
+    const crawlObj = existing && typeof existing === "object" ? existing : {};
     merged.discovery = {
       ...(merged.discovery ?? {}),
-      crawl: { ...(merged.discovery?.crawl ?? {}), enabled: cli.crawl },
+      crawl: { ...crawlObj, enabled: cli.crawl },
     };
   }
   return ConfigSchema.parse(merged);

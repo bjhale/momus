@@ -6,12 +6,18 @@ export const ConfigSchema = z.object({
   prod: z.string().url(),
   discovery: z.object({
     sitemap: z.boolean().default(true),
-    crawl: z.object({
-      enabled: z.boolean().default(true),
-      startPath: z.string().default("/"),
-      maxDepth: z.number().int().positive().default(3),
-      maxPages: z.number().int().positive().default(500),
-    }).default({}),
+    maxPages: z.number().int().nonnegative().default(500), // 0 = unlimited
+    crawl: z.union([
+      z.boolean(),
+      z.object({
+        enabled: z.boolean().default(true), // an object means you opted in
+        startPath: z.string().default("/"),
+        maxDepth: z.number().int().positive().default(3),
+      }),
+    ]).default(false).transform((v) =>
+      typeof v === "boolean"
+        ? { enabled: v, startPath: "/", maxDepth: 3 }
+        : v),
     include: z.array(z.string()).default(["/**"]),
     exclude: z.array(z.string()).default([]),
   }).default({}),

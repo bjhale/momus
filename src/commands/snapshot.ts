@@ -39,9 +39,10 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
       config, db, createdAt: new Date().toISOString(),
       discover: () => discoverPaths({
         base: config.prod,
+        maxPages: config.discovery.maxPages,
         sitemap: parsed.overrides.crawl ? false : config.discovery.sitemap,
         crawl: { enabled: config.discovery.crawl.enabled, startPath: config.discovery.crawl.startPath,
-                 maxDepth: config.discovery.crawl.maxDepth, maxPages: config.discovery.crawl.maxPages },
+                 maxDepth: config.discovery.crawl.maxDepth },
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
