@@ -149,6 +149,7 @@ export default defineConfig({
   prod: "https://www.example.com",  // the baseline; also the discovery source
 
   discovery: {
+    // urlList: "urls.txt",                                  // optional: newline-delimited full URLs or paths
     sitemap: true,                                            // read /sitemap.xml
     maxPages: 500,                                            // cap total pages (0 = unlimited)
     crawl: false,                                             // false | true | { startPath, maxDepth }
@@ -181,12 +182,16 @@ export default defineConfig({
 Notes:
 
 - **Discovery** runs against `prod` (the baseline is the source of truth for
-  which pages exist). If `sitemap` is enabled and returns pages, those are
-  authoritative. **Crawling is opt-in** — set `crawl: true` (or a `crawl: { … }`
-  object) to enable a same-origin link crawl; it runs only as a fallback when the
-  sitemap yields no pages. `maxPages` caps the total pages compared — the first N
-  that survive `include`/`exclude`, in discovery order — across sitemap or crawl
-  (`0` disables the cap). Override per run with `--max-pages N`.
+  which pages exist). Pages come from an optional `urlList` file and/or the
+  `sitemap`, unioned together. **`urlList`** is a newline-delimited file of full
+  URLs or bare paths (blank lines ignored); a full URL must be under the `prod`
+  base URL (it is reduced to its path — the dev URL is the same path on the `dev`
+  base), otherwise the run fails. **Crawling is opt-in** — set `crawl: true` (or a
+  `crawl: { … }` object); when enabled it **seeds from the urlList∪sitemap union**
+  (or `crawl.startPath` when those are empty) and expands via same-origin links.
+  `maxPages` caps the total pages compared — the first N that survive
+  `include`/`exclude`, in discovery order — across every source (`0` = no cap).
+  Override per run with `--max-pages N`.
 - **`failScore`** is the fraction of a page's pixels that may differ before the
   page fails. A page passes when its diff score is `<= failScore`. `overrides`
   apply a different gate to matching path globs.

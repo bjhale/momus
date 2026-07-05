@@ -11,6 +11,7 @@ export function configScaffold(): string {
   prod: "https://www.example.com",
 
   discovery: {
+    // urlList: "urls.txt",   // optional: newline-delimited full URLs or paths
     sitemap: true,
     maxPages: 500,
     crawl: false,
