@@ -12,11 +12,15 @@ should feed the same comparison pipeline as the other discovery sources.
 
 ## Decisions (from brainstorming)
 
-1. **Merged source.** `urlList` entries union with sitemap results (crawl remains
-   the fallback that runs only when the merged list sources are empty).
-2. **Uniform pipeline.** The merged set — including urlList entries — goes through
-   the same `include`/`exclude` filter, dedup, `maxPages` cap, and sort. Nothing
-   is exempt.
+1. **Merged source, seeding the crawl.** `urlList` (if enabled) unions with
+   sitemap (if enabled) to form a page set. When crawl is enabled, that union is
+   used as the **starting URLs for the crawl**, which expands it. When crawl is
+   disabled, the union itself is the result. (This changes crawl from a
+   "runs-only-when-sitemap-empty fallback" into a seeded expander — see §3.)
+2. **Uniform pipeline; `maxPages` is a hard ceiling.** The whole set — including
+   urlList entries — goes through the same `include`/`exclude` filter, dedup,
+   `maxPages` cap, and sort. Nothing is exempt: a urlList of 502 entries with
+   `maxPages: 500` yields 500 pages (2 dropped, in the usual first-N order).
 3. **Full URLs must be under the prod base.** A full-URL line whose origin does
    not match the prod base is a **hard error** (exit 2), rather than being
    silently mis-targeted by the prod→dev base swap.
@@ -70,16 +74,27 @@ Per line (in file order):
 Returns the list of normalized paths (file order preserved; dedup happens later
 in `discoverPaths`).
 
-## 3. Merge in `discoverPaths`
+## 3. Merge + seeded crawl in `discoverPaths`
 
-`urlList` becomes a third source, unioned **ahead** of the others so its explicit
-entries win dedup precedence and the `maxPages` budget:
+`urlList` (if set) and sitemap (if enabled) union into a **seed set** (urlList
+first, so its explicit entries win dedup precedence and the `maxPages` budget).
+When crawl is enabled, that seed set becomes the crawl's starting URLs; the crawl
+output is then the discovery result. When crawl is disabled, the seed set is the
+result directly.
 
 ```
-raw = []
-if urlList set:  raw = raw.concat(parseUrlList(await readUrlList(urlListPath), base))
-if sitemap:      raw = raw.concat(await sitemapFn(base, fetcher))
-if raw.length === 0 && crawl.enabled:  raw = await crawlFn(...)   // crawl stays fallback
+seeds = []
+if urlList set:  seeds = seeds.concat(parseUrlList(await readUrlList(urlListPath), base))
+if sitemap:      seeds = seeds.concat(await sitemapFn(base, fetcher))
+
+let raw
+if (crawl.enabled) {
+  const starts = seeds.length > 0 ? seeds : [crawl.startPath]   // fall back to startPath if no seeds
+  raw = await crawlFn(base, starts, { maxDepth: crawl.maxDepth, maxPages }, fetcher, keep)
+} else {
+  raw = seeds
+}
+
 // unchanged uniform pipeline:
 kept    = raw.filter(keep)                 // include/exclude
 deduped = [...new Set(kept)]               // first-seen order preserved
@@ -88,12 +103,33 @@ sorted  = capped.sort()
 if (sorted.length === 0) throw "no pages discovered"
 ```
 
-- **Ordering:** urlList entries first, then sitemap; crawl only replaces the set
-  when both are empty. The `raw.length === 0` crawl-fallback test now measures the
-  urlList+sitemap union (before filtering), preserving the "crawl only when the
-  cheap list sources yield nothing" intent.
-- The existing filter/dedup/cap/sort and the `"no pages discovered"` throw are
-  unchanged.
+- **Ordering:** urlList seeds first, then sitemap seeds. The crawler processes
+  seeds at depth 0 in that order, so with a full seed list at the cap it collects
+  the first N seeds before expanding (matching decision 2's 502→500 example).
+- **Crawl is now a seeded expander, not a fallback.** When enabled it always runs
+  (seeded by urlList∪sitemap, or `crawl.startPath` when there are no seeds).
+  **Behavior change:** previously, crawl-enabled + a non-empty sitemap meant crawl
+  did *not* run; now it runs, seeded by the sitemap. Crawl remains opt-in
+  (default disabled), so this only affects configs that already enabled it.
+- Because seeded crawl fetches its seed pages, a seed that fails to load (or is
+  excluded by `keep`) is not collected — the same rule the crawler already
+  applies to every page. (With crawl disabled, seeds are not fetched during
+  discovery; unreachable ones surface later as error comparisons.)
+- The filter/dedup/cap/sort and the `"no pages discovered"` throw are unchanged.
+
+### Crawler signature change
+
+`crawlPaths` takes multiple start paths instead of one, so it can seed from the
+union:
+
+```ts
+// before: crawlPaths(base, startPath: string, opts, fetcher, keep)
+// after:  crawlPaths(base, startPaths: string[], opts, fetcher, keep)
+```
+
+The BFS queue is initialized with every start path at depth 0 (deduped by the
+existing `visited` set); everything else — `keep` counting, `maxPages` (0 =
+unlimited), `maxDepth`, same-host filter, fragment stripping — is unchanged.
 
 `DiscoverArgs` gains:
 
@@ -101,8 +137,9 @@ if (sorted.length === 0) throw "no pages discovered"
 - `_readUrlList?: (path: string) => Promise<string>` — injectable reader seam,
   defaulting to `(p) => Bun.file(p).text()`, mirroring `_sitemapFn`/`_crawlFn`.
 
-Parsing stays the pure `parseUrlList` (no filesystem), so it is unit-tested in
-isolation; the reader seam keeps `discoverPaths` testable without touching disk.
+The `_crawlFn` seam signature updates to `(base, starts: string[], opts, fetcher,
+keep) => Promise<string[]>`. Parsing stays the pure `parseUrlList` (no
+filesystem); the reader seam keeps `discoverPaths` testable without touching disk.
 
 ## 4. Command wiring
 
@@ -133,11 +170,16 @@ URL) is what `parseUrlList` checks full URLs against.
   - `#fragment` stripped; `?query` kept.
   - off-base full URL (different host) → throws naming the offending line.
   - prod base with a trailing slash handled (normalized).
+- **`crawlPaths`** (multi-seed): initializes BFS from all start paths at depth 0;
+  overlapping seeds deduped by `visited`; existing keep/maxPages/maxDepth tests
+  updated to the `startPaths: string[]` signature (a single seed becomes `["/"]`).
 - **`discoverPaths`**:
   - urlList merges with sitemap (union + dedup across an overlapping entry).
   - urlList entries are subject to include/exclude (an excluded urlList path is dropped).
-  - urlList entries count toward `maxPages`; urlList-first ordering feeds the cap.
-  - crawl still runs only when both urlList and sitemap are empty.
+  - urlList entries count toward `maxPages` (502 seeds, cap 500 → 500 pages); urlList-first ordering feeds the cap.
+  - crawl enabled seeds from urlList∪sitemap (assert the seed set is passed as the
+    crawler's `starts`); crawl enabled with no seeds falls back to `[crawl.startPath]`.
+  - crawl disabled → result is the urlList∪sitemap union.
   - `_readUrlList` seam is invoked with the configured path; a rejecting reader
     (missing file) propagates.
 - **Commands**: both `run` and `snapshot` pass `urlList` into `discoverPaths`
@@ -148,6 +190,10 @@ URL) is what `parseUrlList` checks full URLs against.
 - README config example: add `urlList` to the `discovery` block; a note describing
   the file format (newline-delimited; full URLs must be under the prod base; paths
   allowed; merged with sitemap; subject to include/exclude and `maxPages`).
+- README discovery note: update the crawl description — crawl now **seeds from the
+  urlList∪sitemap union** and runs whenever enabled (no longer "only as a fallback
+  when the sitemap is empty"); it falls back to `crawl.startPath` when there are no
+  seeds.
 - `init` scaffold (`src/commands/init.ts`): add a commented `// urlList: "urls.txt",`
   line so the option is discoverable without enabling it.
 
