@@ -231,6 +231,12 @@ Notes:
 5. **Report** — write a self-contained `momus-report.html`, worst pages first,
    and exit with the code above.
 
+While capturing and diffing, momus renders a progress bar to **stderr** — one
+phase for prod capture (on a fresh baseline) and one for dev capture + diff. In a
+non-TTY environment (CI, piped output) it prints a plain progress line
+periodically instead of redrawing. stdout carries only the final summary, so
+piping stdout to a file stays clean.
+
 ## Releasing
 
 Releases are cut by pushing a version tag. The
