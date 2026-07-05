@@ -94,6 +94,7 @@ frozen prod capture that `momus run` reuses.
 | `--config FILE` | Path to the config file (default `./momus.config.ts`). |
 | `--prod URL` | Override the config's `prod` base URL. |
 | `--concurrency N` | Override the number of concurrent screenshots. |
+| `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
 | `--crawl` | Force same-origin crawl discovery on. |
 
 The baseline lives in its own tables inside `output.db`; the single SQLite file
@@ -123,6 +124,7 @@ run; the baseline is preserved.
 | `--prod URL` | Override the config's `prod` base URL. |
 | `--out FILE` | Override the report output path (default `momus-report.html`). |
 | `--concurrency N` | Override the number of concurrent screenshots. |
+| `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
 | `--crawl` | Force same-origin crawl discovery on. |
 
 CLI flags win over config-file values.
@@ -148,7 +150,8 @@ export default defineConfig({
 
   discovery: {
     sitemap: true,                                            // read /sitemap.xml
-    crawl: { enabled: true, startPath: "/", maxDepth: 3, maxPages: 500 },
+    maxPages: 500,                                            // cap total pages (0 = unlimited)
+    crawl: false,                                             // false | true | { startPath, maxDepth }
     include: ["/**"],                                         // path globs to keep
     exclude: ["/admin/**"],                                   // path globs to drop
   },
@@ -179,8 +182,11 @@ Notes:
 
 - **Discovery** runs against `prod` (the baseline is the source of truth for
   which pages exist). If `sitemap` is enabled and returns pages, those are
-  authoritative; crawling is used only as a fallback when the sitemap is empty.
-  Provide a `sitemap.xml` or same-origin `<a href>` links so pages can be found.
+  authoritative. **Crawling is opt-in** — set `crawl: true` (or a `crawl: { … }`
+  object) to enable a same-origin link crawl; it runs only as a fallback when the
+  sitemap yields no pages. `maxPages` caps the total pages compared — the first N
+  that survive `include`/`exclude`, in discovery order — across sitemap or crawl
+  (`0` disables the cap). Override per run with `--max-pages N`.
 - **`failScore`** is the fraction of a page's pixels that may differ before the
   page fails. A page passes when its diff score is `<= failScore`. `overrides`
   apply a different gate to matching path globs.

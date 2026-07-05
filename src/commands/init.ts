@@ -12,7 +12,8 @@ export function configScaffold(): string {
 
   discovery: {
     sitemap: true,
-    crawl: { enabled: true, startPath: "/", maxDepth: 3, maxPages: 500 },
+    maxPages: 500,
+    crawl: false,
     include: ["/**"],
     exclude: ["/admin/**"],
   },
