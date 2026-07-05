@@ -30,6 +30,7 @@ export const ConfigSchema = z.object({
     timeoutMs: z.number().int().positive().default(15000),
     disableAnimations: z.boolean().default(true),
     mask: z.array(z.string()).default([]),
+    remove: z.array(z.string()).default([]),
   }).default({}),
   diff: z.object({
     threshold: z.number().min(0).max(1).default(0.1),

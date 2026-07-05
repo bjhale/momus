@@ -1,5 +1,5 @@
 // src/capture/screenshot.ts
-import type { Browser, BrowserContext } from "playwright-core";
+import type { Browser, BrowserContext, Page } from "playwright-core";
 import { newContext } from "./browser";
 import { disableAnimationsCss, maskCss } from "./stabilize";
 import type { CaptureResult } from "../types";
@@ -10,6 +10,23 @@ export interface StabilizeOptions {
   timeoutMs: number;
   disableAnimations: boolean;
   mask: string[];
+  remove: string[];
+}
+
+/** Remove every element matching `selectors` from the DOM before capture, so
+ * their layout space collapses (unlike `mask`, which only hides). Invalid
+ * selectors are skipped, never aborting the capture. */
+export async function removeSelectors(page: Page, selectors: string[]): Promise<void> {
+  if (selectors.length === 0) return;
+  await page.evaluate((sels) => {
+    for (const sel of sels) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => el.remove());
+      } catch {
+        /* ignore an invalid selector rather than aborting the capture */
+      }
+    }
+  }, selectors);
 }
 
 /** Capture a full-page PNG for one url at one viewport width. Never throws;
@@ -58,6 +75,7 @@ export async function capture(
       maskCss(opts.mask),
     ].filter(Boolean).join("\n");
     if (css) await page.addStyleTag({ content: css });
+    await removeSelectors(page, opts.remove);
     if (opts.settleMs > 0) await page.waitForTimeout(opts.settleMs);
     const png = await page.screenshot({ fullPage: true, type: "png" });
     return { ok: true, png: new Uint8Array(png) };

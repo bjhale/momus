@@ -2,7 +2,7 @@
 import { test, expect } from "bun:test";
 import { capture } from "../../src/capture/screenshot";
 
-const STAB = { waitUntil: "load" as const, settleMs: 0, timeoutMs: 1000, disableAnimations: true, mask: [] };
+const STAB = { waitUntil: "load" as const, settleMs: 0, timeoutMs: 1000, disableAnimations: true, mask: [], remove: [] };
 
 // A fake browser whose context throws on newPage, so capture returns {ok:false}
 // AFTER recording the context options — lets us assert the insecure threading

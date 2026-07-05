@@ -9,7 +9,7 @@ import {
 
 const STAB = {
   waitUntil: "networkidle" as const, settleMs: 500, timeoutMs: 15000,
-  disableAnimations: true, mask: [".ad"],
+  disableAnimations: true, mask: [".ad"], remove: [],
 };
 
 test("start run, save comparison, read back", () => {

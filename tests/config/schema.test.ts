@@ -73,3 +73,10 @@ test("insecure defaults to false and accepts true", () => {
   const t = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", insecure: true });
   expect(t.insecure).toBe(true);
 });
+
+test("stabilize.remove defaults to [] and accepts selectors", () => {
+  const d = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
+  expect(d.stabilize.remove).toEqual([]);
+  const r = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", stabilize: { remove: [".x", "#y"] } });
+  expect(r.stabilize.remove).toEqual([".x", "#y"]);
+});
