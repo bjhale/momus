@@ -66,3 +66,32 @@ test("discovery failure leaves any prior baseline intact and propagates", async 
   expect(readBaselineImages(db).length).toBe(1); // old baseline preserved
   expect(readSnapshot(db)!.createdAt).toBe("t1");
 });
+
+import type { Progress } from "../../src/progress";
+
+function fakeProgress() {
+  const rec = { starts: [] as Array<{ total: number; label: string }>, ticks: 0, stops: 0 };
+  const p: Progress = {
+    start: (total, label) => { rec.starts.push({ total, label }); },
+    tick: () => { rec.ticks++; },
+    stop: () => { rec.stops++; },
+  };
+  return { p, rec };
+}
+
+test("snapshotPipeline reports progress: start('Capturing prod', total), tick per job, stop", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  const { p, rec } = fakeProgress();
+
+  await snapshotPipeline({
+    config, db, createdAt: "t",
+    discover: async () => ["/", "/pricing"], // 2 jobs
+    captureFn: async () => ({ ok: true, png: png(100) }),
+    progress: p,
+  });
+
+  expect(rec.starts).toEqual([{ total: 2, label: "Capturing prod" }]);
+  expect(rec.ticks).toBe(2);
+  expect(rec.stops).toBe(1);
+});

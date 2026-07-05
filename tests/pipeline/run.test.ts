@@ -201,3 +201,51 @@ test("without prodBaseUrl the run row falls back to config.prod", async () => {
   const row = db.query("SELECT prod_base_url FROM runs WHERE id = 1").get() as { prod_base_url: string };
   expect(row.prod_base_url).toBe("https://www.example.com");
 });
+
+import type { Progress } from "../../src/progress";
+
+function fakeProgress() {
+  const rec = { starts: [] as Array<{ total: number; label: string }>, ticks: 0, stops: 0 };
+  const p: Progress = {
+    start: (total, label) => { rec.starts.push({ total, label }); },
+    tick: () => { rec.ticks++; },
+    stop: () => { rec.stops++; },
+  };
+  return { p, rec };
+}
+
+test("runPipeline reports progress: start(total), tick per job, stop", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [375, 1280] });
+  const db = openDb(":memory:");
+  const { p, rec } = fakeProgress();
+
+  await runPipeline({
+    config, db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/", "/x"], [375, 1280]), // 4 jobs
+    getDev: okPng, getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+    progress: p,
+  });
+
+  expect(rec.starts).toEqual([{ total: 4, label: "Capturing dev + diffing" }]);
+  expect(rec.ticks).toBe(4);
+  expect(rec.stops).toBe(1);
+});
+
+test("runPipeline ticks even for error jobs", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  const { p, rec } = fakeProgress();
+
+  await runPipeline({
+    config, db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/ok", "/boom"], [1280]),
+    getDev: async (job) => { if (job.path === "/boom") throw new Error("x"); return { ok: true, png: png(4, 4, 100) }; },
+    getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+    progress: p,
+  });
+
+  expect(rec.ticks).toBe(2); // both the ok job and the throwing job ticked
+  expect(rec.stops).toBe(1);
+});

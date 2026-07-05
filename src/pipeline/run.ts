@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
+import type { Progress } from "../progress";
 import { startRun, saveComparison, finishRun } from "../store/db";
 import { mapWithConcurrency } from "./queue";
 import { resolveFailScore, passed } from "./verdict";
@@ -36,6 +37,8 @@ export interface RunPipelineArgs {
   /** Obtain the prod-side image for a job (live capture, or read from the baseline store). */
   getProd: (job: Job) => Promise<CaptureResult>;
   diffPool: DiffPoolLike;
+  /** Optional progress reporter for the capture+diff phase. */
+  progress?: Progress;
 }
 
 export async function runPipeline(args: RunPipelineArgs): Promise<void> {
@@ -47,6 +50,7 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
 
   try {
     const jobs = await args.listJobs();
+    args.progress?.start(jobs.length, "Capturing dev + diffing");
 
     await mapWithConcurrency(jobs, config.concurrency.screenshots, async (job) => {
       const rec: ComparisonRecord = {
@@ -81,8 +85,11 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
         rec.status = "error";
         rec.error = err instanceof Error ? err.message : String(err);
         saveComparison(db, runId, rec);
+      } finally {
+        args.progress?.tick();
       }
     });
+    args.progress?.stop();
   } catch (err) {
     // listJobs() or the fan-out failed unexpectedly: record a terminal status so
     // the run row is never orphaned at "running", then re-throw for the CLI.
