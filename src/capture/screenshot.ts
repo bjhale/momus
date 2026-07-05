@@ -19,6 +19,7 @@ export async function capture(
   url: string,
   viewportWidth: number,
   opts: StabilizeOptions,
+  insecure = false,
 ): Promise<CaptureResult> {
   // Single shared deadline so nav + settle together honor one `timeoutMs` cap
   // (spec §6), rather than allowing up to 2× the configured budget.
@@ -28,7 +29,7 @@ export async function capture(
   // { ok:false } rather than throwing (upholds "one bad page can't abort a run").
   let context: BrowserContext | undefined;
   try {
-    context = await newContext(browser, viewportWidth);
+    context = await newContext(browser, viewportWidth, insecure);
     const page = await context.newPage();
     // Hard navigation: a genuine load failure (DNS, connection refused, nav
     // timeout) throws here and is recorded as an error (spec §7).

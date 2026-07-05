@@ -19,9 +19,12 @@ export async function launchBrowser(): Promise<Browser> {
   return chromium.launch({ headless: true });
 }
 
-export async function newContext(browser: Browser, viewportWidth: number): Promise<BrowserContext> {
+export async function newContext(
+  browser: Browser, viewportWidth: number, ignoreHTTPSErrors = false,
+): Promise<BrowserContext> {
   return browser.newContext({
     viewport: { width: viewportWidth, height: 900 },
     deviceScaleFactor: 1,
+    ignoreHTTPSErrors,
   });
 }
