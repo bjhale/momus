@@ -51,3 +51,39 @@ test("respects maxPages", async () => {
   }, fetcher);
   expect(paths.length).toBe(2);
 });
+
+test("keep excludes pages from results but still traverses through them", async () => {
+  const fetcher = fakeFetch({
+    "https://www.example.com/": html(["/skip"]),
+    "https://www.example.com/skip": html(["/keep"]), // excluded, but links to a kept page
+    "https://www.example.com/keep": html([]),
+  });
+  const keep = (p: string) => p !== "/skip";
+  const paths = await crawlPaths("https://www.example.com", "/", { maxDepth: 5, maxPages: 0 }, fetcher, keep);
+  expect(paths.sort()).toEqual(["/", "/keep"]); // /skip fetched + traversed, not collected
+});
+
+test("maxPages counts only kept pages", async () => {
+  const fetcher = fakeFetch({
+    "https://www.example.com/": html(["/a", "/b", "/c", "/d"]),
+    "https://www.example.com/a": html([]),
+    "https://www.example.com/b": html([]),
+    "https://www.example.com/c": html([]),
+    "https://www.example.com/d": html([]),
+  });
+  const keep = (p: string) => p !== "/a" && p !== "/b";
+  const paths = await crawlPaths("https://www.example.com", "/", { maxDepth: 5, maxPages: 2 }, fetcher, keep);
+  // BFS: "/" kept(1); /a,/b skipped; /c kept(2) -> stop.
+  expect(paths).toEqual(["/", "/c"]);
+});
+
+test("maxPages 0 crawls unlimited, bounded only by maxDepth", async () => {
+  const fetcher = fakeFetch({
+    "https://www.example.com/": html(["/a"]),
+    "https://www.example.com/a": html(["/b"]),
+    "https://www.example.com/b": html(["/c"]), // depth 3, beyond maxDepth 2 → not traversed
+    "https://www.example.com/c": html([]),
+  });
+  const paths = await crawlPaths("https://www.example.com", "/", { maxDepth: 2, maxPages: 0 }, fetcher);
+  expect(paths.sort()).toEqual(["/", "/a", "/b"]);
+});

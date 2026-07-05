@@ -6,23 +6,29 @@ export interface CrawlOptions { maxDepth: number; maxPages: number }
 function extractHrefs(html: string): string[] {
   // matchAll avoids stateful RegExp; group 1 is the href value. Capture the full
   // href (including any #fragment) so fragmented links aren't dropped; the URL
-  // parser in crawlPaths strips the fragment via `abs.pathname + abs.search`.
+  // parser below strips the fragment via `abs.pathname + abs.search`.
   return [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]!);
 }
 
-/** Same-domain breadth-first crawl. Returns discovered paths (incl. start). */
+/** Same-domain breadth-first crawl. Returns discovered paths (incl. start) that
+ * pass `keep`, in BFS order, up to `maxPages` (0 = unlimited). Pages that fail
+ * `keep` are still fetched and traversed — so links to kept pages behind an
+ * excluded page are still followed — but are not collected or counted toward
+ * the cap. */
 export async function crawlPaths(
   base: string,
   startPath: string,
   opts: CrawlOptions,
   fetcher: Fetcher,
+  keep: (path: string) => boolean = () => true,
 ): Promise<string[]> {
   const baseHost = new URL(base).host;
   const visited = new Set<string>();
   const result: string[] = [];
   const queue: Array<{ path: string; depth: number }> = [{ path: startPath, depth: 0 }];
+  const capped = opts.maxPages > 0;
 
-  while (queue.length > 0 && result.length < opts.maxPages) {
+  while (queue.length > 0 && (!capped || result.length < opts.maxPages)) {
     const { path, depth } = queue.shift()!;
     if (visited.has(path)) continue;
     visited.add(path);
@@ -30,8 +36,12 @@ export async function crawlPaths(
     const url = new URL(path, base).toString();
     const res = await fetcher(url);
     if (!res.ok) continue;
-    result.push(path);
-    if (result.length >= opts.maxPages) break;
+
+    // Only pages passing `keep` are collected and counted toward the cap.
+    if (keep(path)) {
+      result.push(path);
+      if (capped && result.length >= opts.maxPages) break;
+    }
     if (depth >= opts.maxDepth) continue;
 
     const body = await res.text();
