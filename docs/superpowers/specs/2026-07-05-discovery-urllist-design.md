@@ -149,6 +149,15 @@ Both `discoverPaths({ ... })` call sites — the `discover` closure in
 is used in production; discovery runs against `config.prod`, so `base` (the prod
 URL) is what `parseUrlList` checks full URLs against.
 
+**Remove the `--crawl` sitemap hack.** Both call sites currently set
+`sitemap: parsed.overrides.crawl ? false : config.discovery.sitemap` — a
+workaround from the old fallback model (disable the sitemap so the crawl path is
+taken). Under seeded crawl this is wrong: it would drop the sitemap seeds when
+`--crawl` is used. Change it to `sitemap: config.discovery.sitemap`. `--crawl`
+still forces crawl on (via `resolveConfig` setting `crawl.enabled`), and crawl now
+seeds from whatever sitemap/urlList produce — consistent with a config
+`crawl: true`.
+
 ## 5. Edge cases
 
 - **Missing file** → `Bun.file(path).text()` rejects (ENOENT) → propagates out of
