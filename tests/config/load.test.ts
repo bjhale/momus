@@ -47,3 +47,11 @@ test("loadConfigFile loads a JSON config via a cwd-relative path", async () => {
     rmSync(relPath, { force: true });
   }
 });
+
+test("--crawl forces enabled while preserving existing crawl object fields", () => {
+  const c = resolveConfig(
+    { ...base, discovery: { crawl: { enabled: false, maxDepth: 5 } } },
+    { crawl: true },
+  );
+  expect(c.discovery.crawl).toEqual({ enabled: true, startPath: "/", maxDepth: 5 });
+});

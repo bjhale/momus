@@ -42,6 +42,8 @@ export async function discoverPaths(args: DiscoverArgs): Promise<string[]> {
 
   // Post-filter, then cap the first N survivors in DISCOVERY order (slice BEFORE
   // the alphabetical sort), then sort for stable output. maxPages 0 = unlimited.
+  // Authoritative include/exclude filter for the sitemap branch; idempotent for
+  // the crawl branch (the crawler already applied `keep`).
   const kept = paths.filter(keep);
   const deduped = [...new Set(kept)]; // Set preserves first-seen order
   const capped = args.maxPages === 0 ? deduped : deduped.slice(0, args.maxPages);
