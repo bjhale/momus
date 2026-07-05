@@ -32,6 +32,8 @@ test("is self-contained (no external references)", () => {
 test("summary shows verdict, counts, worst, viewports, urls", () => {
   const html = renderReport(rows, { dev: "https://dev", prod: "https://prod" });
   expect(html).toContain("FAIL");                     // verdict (a fail + an error present)
+  expect(html).toContain("momus — FAIL");   // header verdict, not just a badge
+  expect(html).toContain('class="FAIL"');   // header accent class
   expect(html).toContain("3 comparisons");
   expect(html).toContain("1 passed");
   expect(html).toContain("1 failed");
@@ -46,7 +48,10 @@ test("verdict is PASS when every comparison passes", () => {
   const allPass: ComparisonRecord[] = [
     { path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", diffScore: 0, passed: true, status: "ok" },
   ];
-  expect(renderReport(allPass, { dev: "d", prod: "p" })).toContain("PASS");
+  const html = renderReport(allPass, { dev: "d", prod: "p" });
+  expect(html).toContain("momus — PASS");     // header verdict
+  expect(html).toContain('class="PASS"');     // header accent class
+  expect(html).not.toContain("momus — FAIL"); // and definitely not FAIL
 });
 
 test("each comparison is a collapsed <details> with its status class", () => {
@@ -67,4 +72,16 @@ test("has the All/Passed/Failed filter and an inline (no-src) script", () => {
   expect(html).toContain("<main data-filter=\"all\">");
   expect(html).toMatch(/<script>[\s\S]*<\/script>/);  // inline script present
   expect(html).not.toMatch(/<script\s+src=/i);        // and it has no src
+});
+
+test("all-error report: FAIL verdict and worst: n/a", () => {
+  const allError: ComparisonRecord[] = [
+    { path: "/a", viewport: 1280, devUrl: "d", prodUrl: "p", status: "error", error: "boom" },
+    { path: "/b", viewport: 375, devUrl: "d", prodUrl: "p", status: "error", error: "boom" },
+  ];
+  const html = renderReport(allError, { dev: "d", prod: "p" });
+  expect(html).toContain("momus — FAIL");
+  expect(html).toContain("0 passed");
+  expect(html).toContain("2 errored");
+  expect(html).toContain("worst: n/a");
 });
