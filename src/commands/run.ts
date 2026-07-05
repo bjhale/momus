@@ -12,6 +12,7 @@ import type { Job } from "../pipeline/run";
 import { exitCodeFor } from "../pipeline/verdict";
 import { writeReport } from "../report/report";
 import type { ResolvedConfig } from "../config/schema";
+import { makeProgress } from "../progress";
 
 export async function runCommand(parsed: ParsedCli): Promise<number> {
   if (!isBrowserInstalled()) {
@@ -34,6 +35,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   const db = openDb(config.output.db);
   const browser = await launchBrowser();
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
+  const progress = makeProgress();
 
   const realFetch = makeFetcher(config.insecure);
 
@@ -56,6 +58,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
       captureProd: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure),
       getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure),
       diffPool,
+      progress,
     });
   } catch (err) {
     console.error(`Run failed: ${err instanceof Error ? err.message : err}`);

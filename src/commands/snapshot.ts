@@ -8,6 +8,7 @@ import { makeFetcher } from "../discovery/fetcher";
 import { openDb, readBaselineImages } from "../store/db";
 import { snapshotPipeline } from "../pipeline/snapshot";
 import type { ResolvedConfig } from "../config/schema";
+import { makeProgress } from "../progress";
 
 export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   if (!isBrowserInstalled()) {
@@ -29,6 +30,7 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   // replaces the baseline tables, leaving the file available for later runs.
   const db = openDb(config.output.db);
   const browser = await launchBrowser();
+  const progress = makeProgress();
 
   const realFetch = makeFetcher(config.insecure);
 
@@ -46,6 +48,7 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
         fetcher: realFetch,
       }),
       captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure),
+      progress,
     });
   } catch (err) {
     console.error(`Snapshot failed: ${err instanceof Error ? err.message : err}`);

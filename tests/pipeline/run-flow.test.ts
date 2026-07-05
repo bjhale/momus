@@ -5,6 +5,7 @@ import { runFlow } from "../../src/pipeline/run-flow";
 import { openDb, readComparisons, readSnapshot, readBaselineImages } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
+import type { Progress } from "../../src/progress";
 
 function png(v: number): Uint8Array {
   const p = new PNG({ width: 4, height: 4 }); p.data.fill(v);
@@ -125,4 +126,56 @@ test("a prod error row from materialize yields a prod: error comparison", async 
   const rows = readComparisons(db, 1);
   expect(rows[0]!.status).toBe("error");
   expect(rows[0]!.error).toContain("prod: 404");
+});
+
+function fakeProgress() {
+  const rec = { starts: [] as Array<{ total: number; label: string }>, ticks: 0, stops: 0 };
+  const p: Progress = {
+    start: (total, label) => { rec.starts.push({ total, label }); },
+    tick: () => { rec.ticks++; },
+    stop: () => { rec.stops++; },
+  };
+  return { p, rec };
+}
+
+test("runFlow drives two sequential phases on a materializing run", async () => {
+  const db = openDb(":memory:");
+  const { p, rec } = fakeProgress();
+
+  await runFlow({
+    config: cfg(), db, now: "t",
+    discover: async () => ["/", "/pricing"], // 2 prod jobs (viewports [1280])
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool, progress: p,
+  });
+
+  expect(rec.starts.map((s) => s.label)).toEqual(["Capturing prod", "Capturing dev + diffing"]);
+  expect(rec.starts.map((s) => s.total)).toEqual([2, 2]);
+  expect(rec.ticks).toBe(4); // 2 prod + 2 dev
+  expect(rec.stops).toBe(2);
+});
+
+test("runFlow drives one phase on a reused (frozen) baseline", async () => {
+  const db = openDb(":memory:");
+  // Materialize first WITHOUT progress.
+  await runFlow({
+    config: cfg(), db, now: "t1",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+  // Second run reuses the baseline; only the dev phase runs.
+  const { p, rec } = fakeProgress();
+  await runFlow({
+    config: cfg(), db, now: "t2",
+    discover: async () => { throw new Error("frozen"); },
+    captureProd: async () => { throw new Error("frozen"); },
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool, progress: p,
+  });
+
+  expect(rec.starts.map((s) => s.label)).toEqual(["Capturing dev + diffing"]);
+  expect(rec.stops).toBe(1);
 });

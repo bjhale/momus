@@ -2,6 +2,7 @@
 import type { Database } from "bun:sqlite";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult } from "../types";
+import type { Progress } from "../progress";
 import { readSnapshot, readBaselineImages, type BaselineImageRow } from "../store/db";
 import { snapshotPipeline } from "./snapshot";
 import { baselineConflict } from "./compat";
@@ -19,6 +20,7 @@ export interface RunFlowArgs {
   /** Capture a dev page — always a live capture. */
   getDev: (job: Job) => Promise<CaptureResult>;
   diffPool: DiffPoolLike;
+  progress?: Progress;
 }
 
 export type RunFlowResult =
@@ -42,6 +44,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
       config, db, createdAt: args.now,
       discover: args.discover,
       captureFn: args.captureProd,
+      progress: args.progress,
     });
     snapshot = readSnapshot(db)!;
     materialized = true;
@@ -69,6 +72,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
         : { ok: false, error: im.error ?? "prod capture failed in snapshot" };
     },
     diffPool: args.diffPool,
+    progress: args.progress,
   });
 
   return { ok: true, materialized, createdAt: snapshot.createdAt };
