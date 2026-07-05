@@ -19,7 +19,6 @@ export function makeProgress(stream: NodeJS.WritableStream = process.stderr): Pr
     format: "{label} [{bar}] {percentage}% | {value}/{total}",
     barCompleteChar: "█",
     barIncompleteChar: "░",
-    hideCursor: true,
     stream: stream as NodeJS.WriteStream,
     noTTYOutput: true,
     notTTYSchedule: 2000,

@@ -28,3 +28,13 @@ test("driving the bar does not throw and writes to the given stream", () => {
   p.stop();
   expect(cap.get().length).toBeGreaterThan(0);
 });
+
+test("one bar instance drives two sequential phases (start/stop/start/stop)", () => {
+  const cap = captureStream();
+  const p = makeProgress(cap.stream);
+  p.start(2, "Phase-A"); p.tick(); p.tick(); p.stop();
+  p.start(3, "Phase-B"); p.tick(); p.stop();
+  const out = cap.get();
+  expect(out).toContain("Phase-A");
+  expect(out).toContain("Phase-B");
+});
