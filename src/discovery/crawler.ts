@@ -10,14 +10,14 @@ function extractHrefs(html: string): string[] {
   return [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1]!);
 }
 
-/** Same-domain breadth-first crawl. Returns discovered paths (incl. start) that
- * pass `keep`, in BFS order, up to `maxPages` (0 = unlimited). Pages that fail
- * `keep` are still fetched and traversed — so links to kept pages behind an
- * excluded page are still followed — but are not collected or counted toward
- * the cap. */
+/** Same-domain breadth-first crawl seeded from every path in `startPaths`.
+ * Returns discovered paths that pass `keep`, in BFS order, up to `maxPages`
+ * (0 = unlimited). Pages that fail `keep` are still fetched and traversed — so
+ * links to kept pages behind an excluded page are still followed — but are not
+ * collected or counted toward the cap. */
 export async function crawlPaths(
   base: string,
-  startPath: string,
+  startPaths: string[],
   opts: CrawlOptions,
   fetcher: Fetcher,
   keep: (path: string) => boolean = () => true,
@@ -25,7 +25,7 @@ export async function crawlPaths(
   const baseHost = new URL(base).host;
   const visited = new Set<string>();
   const result: string[] = [];
-  const queue: Array<{ path: string; depth: number }> = [{ path: startPath, depth: 0 }];
+  const queue: Array<{ path: string; depth: number }> = startPaths.map((p) => ({ path: p, depth: 0 }));
   const capped = opts.maxPages > 0;
 
   while (queue.length > 0 && (!capped || result.length < opts.maxPages)) {

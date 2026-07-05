@@ -22,9 +22,7 @@ test("BFS discovers same-domain links up to depth", async () => {
     "https://www.example.com/b": html([]),
     "https://www.example.com/c": html([]),
   });
-  const paths = await crawlPaths("https://www.example.com", "/", {
-    maxDepth: 2, maxPages: 100,
-  }, fetcher);
+  const paths = await crawlPaths("https://www.example.com", ["/"], { maxDepth: 2, maxPages: 100 }, fetcher);
   expect(paths.sort()).toEqual(["/", "/a", "/b", "/c"]);
 });
 
@@ -33,9 +31,7 @@ test("keeps links with fragments, stripping the fragment but keeping the query",
     "https://www.example.com/": html(["/docs?v=2#install"]),
     "https://www.example.com/docs?v=2": html([]),
   });
-  const paths = await crawlPaths("https://www.example.com", "/", {
-    maxDepth: 2, maxPages: 100,
-  }, fetcher);
+  const paths = await crawlPaths("https://www.example.com", ["/"], { maxDepth: 2, maxPages: 100 }, fetcher);
   expect(paths.sort()).toEqual(["/", "/docs?v=2"]);
 });
 
@@ -46,21 +42,19 @@ test("respects maxPages", async () => {
     "https://www.example.com/b": html([]),
     "https://www.example.com/c": html([]),
   });
-  const paths = await crawlPaths("https://www.example.com", "/", {
-    maxDepth: 5, maxPages: 2,
-  }, fetcher);
+  const paths = await crawlPaths("https://www.example.com", ["/"], { maxDepth: 5, maxPages: 2 }, fetcher);
   expect(paths.length).toBe(2);
 });
 
 test("keep excludes pages from results but still traverses through them", async () => {
   const fetcher = fakeFetch({
     "https://www.example.com/": html(["/skip"]),
-    "https://www.example.com/skip": html(["/keep"]), // excluded, but links to a kept page
+    "https://www.example.com/skip": html(["/keep"]),
     "https://www.example.com/keep": html([]),
   });
   const keep = (p: string) => p !== "/skip";
-  const paths = await crawlPaths("https://www.example.com", "/", { maxDepth: 5, maxPages: 0 }, fetcher, keep);
-  expect(paths.sort()).toEqual(["/", "/keep"]); // /skip fetched + traversed, not collected
+  const paths = await crawlPaths("https://www.example.com", ["/"], { maxDepth: 5, maxPages: 0 }, fetcher, keep);
+  expect(paths.sort()).toEqual(["/", "/keep"]);
 });
 
 test("maxPages counts only kept pages", async () => {
@@ -72,8 +66,7 @@ test("maxPages counts only kept pages", async () => {
     "https://www.example.com/d": html([]),
   });
   const keep = (p: string) => p !== "/a" && p !== "/b";
-  const paths = await crawlPaths("https://www.example.com", "/", { maxDepth: 5, maxPages: 2 }, fetcher, keep);
-  // BFS: "/" kept(1); /a,/b skipped; /c kept(2) -> stop.
+  const paths = await crawlPaths("https://www.example.com", ["/"], { maxDepth: 5, maxPages: 2 }, fetcher, keep);
   expect(paths).toEqual(["/", "/c"]);
 });
 
@@ -81,9 +74,25 @@ test("maxPages 0 crawls unlimited, bounded only by maxDepth", async () => {
   const fetcher = fakeFetch({
     "https://www.example.com/": html(["/a"]),
     "https://www.example.com/a": html(["/b"]),
-    "https://www.example.com/b": html(["/c"]), // depth 3, beyond maxDepth 2 → not traversed
+    "https://www.example.com/b": html(["/c"]),
     "https://www.example.com/c": html([]),
   });
-  const paths = await crawlPaths("https://www.example.com", "/", { maxDepth: 2, maxPages: 0 }, fetcher);
+  const paths = await crawlPaths("https://www.example.com", ["/"], { maxDepth: 2, maxPages: 0 }, fetcher);
   expect(paths.sort()).toEqual(["/", "/a", "/b"]);
+});
+
+test("seeds BFS from every start path", async () => {
+  const fetcher = fakeFetch({
+    "https://www.example.com/a": html([]),
+    "https://www.example.com/b": html(["/c"]),
+    "https://www.example.com/c": html([]),
+  });
+  const paths = await crawlPaths("https://www.example.com", ["/a", "/b"], { maxDepth: 2, maxPages: 0 }, fetcher);
+  expect(paths.sort()).toEqual(["/a", "/b", "/c"]);
+});
+
+test("deduplicates overlapping start paths", async () => {
+  const fetcher = fakeFetch({ "https://www.example.com/a": html([]) });
+  const paths = await crawlPaths("https://www.example.com", ["/a", "/a"], { maxDepth: 1, maxPages: 0 }, fetcher);
+  expect(paths).toEqual(["/a"]);
 });
