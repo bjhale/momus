@@ -133,6 +133,17 @@ export async function capture(
         }
       }
     }
+    // Ensure web fonts are fully loaded and applied before capture.
+    // networkidle guarantees font bytes are downloaded; document.fonts.ready
+    // guarantees they are parsed and applied to the rendering tree.
+    const fontBudget = Math.min(5000, Math.max(0, deadline - Date.now()));
+    if (fontBudget > 0) {
+      await Promise.race([
+        page.evaluate(() => document.fonts.ready),
+        page.waitForTimeout(fontBudget),
+      ]);
+    }
+
     const css = [
       opts.disableAnimations ? disableAnimationsCss() : "",
       maskCss(opts.mask),
