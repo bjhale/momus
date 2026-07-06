@@ -14,16 +14,32 @@ export interface StabilizeOptions {
 }
 
 /** Remove every element matching `selectors` from the DOM before capture, so
- * their layout space collapses (unlike `mask`, which only hides). Invalid
- * selectors are skipped, never aborting the capture. */
+ * their layout space collapses (unlike `mask`, which only hides). Searches the
+ * document AND every open shadow root (so web-component / portal UI like the
+ * Next.js dev indicator, which lives in a shadow root, is reachable —
+ * `document.querySelectorAll` alone does not pierce shadow DOM). Invalid
+ * selectors are skipped, never aborting the capture. Closed shadow roots are
+ * unreachable by any script and are left as-is. */
 export async function removeSelectors(page: Page, selectors: string[]): Promise<void> {
   if (selectors.length === 0) return;
   await page.evaluate((sels) => {
+    // Collect the document plus every open shadow root, recursively.
+    const roots: (Document | ShadowRoot)[] = [];
+    const collect = (root: Document | ShadowRoot) => {
+      roots.push(root);
+      root.querySelectorAll("*").forEach((el) => {
+        if (el.shadowRoot) collect(el.shadowRoot);
+      });
+    };
+    collect(document);
+
     for (const sel of sels) {
-      try {
-        document.querySelectorAll(sel).forEach((el) => el.remove());
-      } catch {
-        /* ignore an invalid selector rather than aborting the capture */
+      for (const root of roots) {
+        try {
+          root.querySelectorAll(sel).forEach((el) => el.remove());
+        } catch {
+          /* ignore an invalid selector rather than aborting the capture */
+        }
       }
     }
   }, selectors);
