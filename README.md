@@ -168,6 +168,7 @@ export default defineConfig({
     timeoutMs: 15000,           // per-page capture budget
     disableAnimations: true,    // freeze CSS animations/transitions
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],  // hide dynamic regions
+    remove: [".cookie-banner"],                           // delete elements (space collapses)
   },
 
   diff: {
@@ -200,8 +201,11 @@ Notes:
 - **`failScore`** is the fraction of a page's pixels that may differ before the
   page fails. A page passes when its diff score is `<= failScore`. `overrides`
   apply a different gate to matching path globs.
-- **`mask`** selectors are hidden before capture so inherently dynamic regions
-  (carousels, ads, timestamps) don't produce false diffs.
+- **`mask`** selectors are hidden before capture (via `visibility: hidden`, so
+  they keep their layout space) — for inherently dynamic regions (carousels, ads,
+  timestamps) that shouldn't produce false diffs. **`remove`** selectors are
+  instead deleted from the DOM before capture, so the page reflows and their space
+  collapses — for elements like cookie banners or chat widgets that shift layout.
 - **`insecure`** disables TLS certificate validation for both the discovery
   fetches and the browser page loads — for self-signed dev/staging servers. It
   removes MITM protection, so it defaults to `false` and should stay off against

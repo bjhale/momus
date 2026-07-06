@@ -28,6 +28,7 @@ export function configScaffold(): string {
     timeoutMs: 15000,
     disableAnimations: true,
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],
+    // remove: [".cookie-banner"],   // delete elements from the DOM before capture (space collapses)
   },
 
   diff: {
