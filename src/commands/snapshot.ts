@@ -32,7 +32,7 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   const browser = await launchBrowser();
   const progress = makeProgress();
 
-  const realFetch = makeFetcher(config.insecure);
+  const realFetch = makeFetcher(config.insecure, config.requestHeaders);
 
   try {
     await snapshotPipeline({
@@ -47,7 +47,7 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
-      captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure),
+      captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders),
       progress,
     });
   } catch (err) {

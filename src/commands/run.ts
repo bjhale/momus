@@ -37,7 +37,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
   const progress = makeProgress();
 
-  const realFetch = makeFetcher(config.insecure);
+  const realFetch = makeFetcher(config.insecure, config.requestHeaders);
 
   // Teardown runs in `finally` so both handles always close, even if one close
   // rejects: `browser.close()` must not be skipped when `diffPool.close()` fails.
@@ -55,8 +55,8 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
-      captureProd: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure),
-      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure),
+      captureProd: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders),
+      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure, config.requestHeaders),
       diffPool,
       progress,
     });
