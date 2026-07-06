@@ -5,3 +5,4 @@ node_modules/
 momus-report.html
 dist/
 momus
+.env
