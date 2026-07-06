@@ -28,6 +28,10 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta)
   if (cs.mask.length !== ss.mask.length || cs.mask.some((m, i) => m !== ss.mask[i])) {
     return `stabilize.mask differs: config ${JSON.stringify(cs.mask)} vs baseline ${JSON.stringify(ss.mask)}`;
   }
+  const cr = cs.remove ?? [], sr = ss.remove ?? [];
+  if (cr.length !== sr.length || cr.some((m, i) => m !== sr[i])) {
+    return `stabilize.remove differs: config ${JSON.stringify(cr)} vs baseline ${JSON.stringify(sr)}`;
+  }
 
   return null;
 }

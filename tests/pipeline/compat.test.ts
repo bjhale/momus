@@ -41,3 +41,20 @@ test("differing stabilize.settleMs → conflict", () => {
   expect(msg).not.toBeNull();
   expect(msg!.toLowerCase()).toContain("settlems");
 });
+
+test("differing stabilize.remove → conflict naming remove", () => {
+  const c = cfg({ stabilize: { remove: [".new"] } });
+  const snap = snapFrom(cfg({ stabilize: { remove: [".old"] } }));
+  const msg = baselineConflict(c, snap);
+  expect(msg).not.toBeNull();
+  expect(msg!.toLowerCase()).toContain("remove");
+});
+
+test("a baseline snapshot missing 'remove' does not conflict with a default (empty) config remove", () => {
+  const c = cfg(); // remove defaults to []
+  const snap = snapFrom(cfg());
+  // Simulate a baseline snapshotted before this feature: its stored stabilize
+  // has no `remove` key.
+  delete (snap.stabilize as { remove?: string[] }).remove;
+  expect(baselineConflict(c, snap)).toBeNull();
+});
