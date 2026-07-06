@@ -23,7 +23,7 @@ Nothing to install but Docker. Mount your working directory (containing
 `momus.config.ts`) at `/work`:
 
 ```bash
-docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus \
+docker run --rm -v "$PWD:/work" bjhale/momus \
   run --config momus.config.ts
 ```
 
@@ -46,14 +46,11 @@ Chromium in-process (a no-op if already present).
 
 ## Quick start
 
-Using the Docker image (replace `YOUR_DOCKERHUB_USER/momus` with the published
-image name):
-
 ```bash
 # scaffold momus.config.ts into the current directory
-docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus init
+docker run --rm -v "$PWD:/work" bjhale/momus init
 # edit momus.config.ts: point `dev` and `prod` at your two deployments
-docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus run --config momus.config.ts
+docker run --rm -v "$PWD:/work" bjhale/momus run --config momus.config.ts
 ```
 
 Open the generated `momus-report.html` in any browser — it is fully
@@ -64,9 +61,9 @@ To capture prod once and compare several dev builds against it:
 
 ```bash
 # snapshot prod into momus.sqlite (do this once, or nightly in CI)
-docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus snapshot --config momus.config.ts
+docker run --rm -v "$PWD:/work" bjhale/momus snapshot --config momus.config.ts
 # diff any dev build against the frozen baseline (repeat as often as you like)
-docker run --rm -v "$PWD:/work" YOUR_DOCKERHUB_USER/momus run --dev https://dev-pr-123.example.com
+docker run --rm -v "$PWD:/work" bjhale/momus run --dev https://dev-pr-123.example.com
 ```
 
 ## Commands
