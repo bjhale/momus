@@ -206,6 +206,8 @@ Notes:
   timestamps) that shouldn't produce false diffs. **`remove`** selectors are
   instead deleted from the DOM before capture, so the page reflows and their space
   collapses — for elements like cookie banners or chat widgets that shift layout.
+  Use narrow selectors: an overly broad `remove` (e.g. `*` or `body`) deletes the
+  whole page and yields a blank screenshot.
 - **`insecure`** disables TLS certificate validation for both the discovery
   fetches and the browser page loads — for self-signed dev/staging servers. It
   removes MITM protection, so it defaults to `false` and should stay off against
