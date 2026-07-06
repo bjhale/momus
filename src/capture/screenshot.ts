@@ -45,6 +45,36 @@ export async function removeSelectors(page: Page, selectors: string[]): Promise<
   }, selectors);
 }
 
+/** Scroll the page top-to-bottom in steps, pausing so lazy content triggers —
+ * IntersectionObserver-based lazy loading only fires when elements enter the
+ * viewport, and neither a static load nor a full-page screenshot scrolls — then
+ * return to the top. Bounded by `maxMs` so infinite-scroll pages can't hang the
+ * capture. `scroll-behavior` is forced to `auto` so a site's smooth-scroll CSS
+ * doesn't turn each step into a slow animation. */
+export async function autoScroll(page: Page, maxMs: number): Promise<void> {
+  await page.evaluate(async (budget) => {
+    const doc = document.documentElement;
+    const prevBehavior = doc.style.scrollBehavior;
+    doc.style.scrollBehavior = "auto";
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const start = Date.now();
+    let prevY = -1;
+    while (Date.now() - start < budget) {
+      window.scrollBy(0, Math.floor(window.innerHeight * 0.8));
+      await sleep(100);
+      const y = window.scrollY;
+      if (y === prevY) break; // can't advance further (bottom or stuck)
+      prevY = y;
+      if (y + window.innerHeight >= doc.scrollHeight) {
+        await sleep(150); // let the last viewport's lazy content start loading
+        break;
+      }
+    }
+    window.scrollTo(0, 0);
+    doc.style.scrollBehavior = prevBehavior;
+  }, maxMs);
+}
+
 /** Capture a full-page PNG for one url at one viewport width. Never throws;
  * returns { ok:false, error } on failure so one bad page can't abort a run. */
 export async function capture(
@@ -84,6 +114,22 @@ export async function capture(
         await page.waitForLoadState(opts.waitUntil, { timeout: remaining });
       } catch {
         // network never went idle within budget — proceed to capture
+      }
+    }
+    // Trigger below-the-fold lazy loading (IntersectionObserver + native
+    // loading="lazy") by scrolling through the page, then let the newly
+    // requested resources settle. Bounded by the remaining budget so an
+    // infinite-scroll page can't hang the capture.
+    let budget = deadline - Date.now();
+    if (budget > 0) {
+      await autoScroll(page, budget);
+      budget = deadline - Date.now();
+      if (budget > 0) {
+        try {
+          await page.waitForLoadState("networkidle", { timeout: budget });
+        } catch {
+          // scroll-triggered loads didn't fully idle within budget — capture anyway
+        }
       }
     }
     const css = [
