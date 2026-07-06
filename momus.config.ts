@@ -15,7 +15,7 @@ export default {
   discovery: {
     // urlList: "urls.txt",   // optional: newline-delimited full URLs or paths
     sitemap: true,
-    maxPages: 5,
+    maxPages: 500,
     crawl: false,
     include: ["/**"],
     exclude: ["/admin/**"],
