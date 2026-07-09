@@ -93,8 +93,21 @@ export async function capture(
   // { ok:false } rather than throwing (upholds "one bad page can't abort a run").
   let context: BrowserContext | undefined;
   try {
-    context = await newContext(browser, viewportWidth, insecure, requestHeaders);
+    context = await newContext(browser, viewportWidth, insecure);
     const page = await context.newPage();
+    // Scope auth headers (e.g. CF-Access tokens) to same-origin requests only.
+    // Sending them cross-origin triggers CORS preflights on font CDNs that
+    // don't expect custom headers, silently blocking web font downloads.
+    if (requestHeaders && Object.keys(requestHeaders).length > 0) {
+      const pageOrigin = new URL(url).origin;
+      await page.route("**/*", (route, request) => {
+        if (new URL(request.url()).origin === pageOrigin) {
+          route.continue({ headers: { ...request.headers(), ...requestHeaders } });
+        } else {
+          route.continue();
+        }
+      });
+    }
     // Hard navigation: a genuine load failure (DNS, connection refused, nav
     // timeout) throws here and is recorded as an error (spec §7).
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
@@ -133,9 +146,6 @@ export async function capture(
         }
       }
     }
-    // Ensure web fonts are fully loaded and applied before capture.
-    // networkidle guarantees font bytes are downloaded; document.fonts.ready
-    // guarantees they are parsed and applied to the rendering tree.
     const fontBudget = Math.min(5000, Math.max(0, deadline - Date.now()));
     if (fontBudget > 0) {
       await Promise.race([
