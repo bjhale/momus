@@ -74,6 +74,28 @@ test("insecure defaults to false and accepts true", () => {
   expect(t.insecure).toBe(true);
 });
 
+test("requestHeaders defaults to an empty object", () => {
+  const c = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
+  expect(c.requestHeaders).toEqual({});
+});
+
+test("requestHeaders accepts a map of string headers", () => {
+  const c = ConfigSchema.parse({
+    dev: "https://d.com",
+    prod: "https://p.com",
+    requestHeaders: { "CF-Access-Client-Id": "abc", "CF-Access-Client-Secret": "xyz" },
+  });
+  expect(c.requestHeaders).toEqual({ "CF-Access-Client-Id": "abc", "CF-Access-Client-Secret": "xyz" });
+});
+
+test("requestHeaders rejects non-string values", () => {
+  expect(() => ConfigSchema.parse({
+    dev: "https://d.com",
+    prod: "https://p.com",
+    requestHeaders: { "X-Count": 5 as any },
+  })).toThrow();
+});
+
 test("stabilize.remove defaults to [] and accepts selectors", () => {
   const d = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
   expect(d.stabilize.remove).toEqual([]);
