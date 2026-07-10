@@ -1,6 +1,6 @@
 // tests/capture/browser.test.ts
-import { test, expect } from "bun:test";
-import { isBrowserInstalled, newContext } from "../../src/capture/browser";
+import { test, expect, spyOn } from "bun:test";
+import { isBrowserInstalled, newContext, launchBrowser, ENGINES } from "../../src/capture/browser";
 
 test("isBrowserInstalled returns a boolean", () => {
   // We can't guarantee install state in CI; just assert the contract.
@@ -41,4 +41,27 @@ test("newContext omits extraHTTPHeaders when none provided", async () => {
   const fakeBrowser = { newContext: async (o: any) => { opts = o; return {} as any; } } as any;
   await newContext(fakeBrowser, 1280, false);
   expect(opts).not.toHaveProperty("extraHTTPHeaders");
+});
+
+test("launchBrowser selects the requested engine", async () => {
+  const fakeBrowser = {} as any;
+  const spy = spyOn(ENGINES.firefox, "launch").mockResolvedValue(fakeBrowser);
+  const b = await launchBrowser("firefox");
+  expect(b).toBe(fakeBrowser);
+  expect(spy).toHaveBeenCalledWith({ headless: true });
+  spy.mockRestore();
+});
+
+test("launchBrowser defaults to chromium", async () => {
+  const fakeBrowser = {} as any;
+  const spy = spyOn(ENGINES.chromium, "launch").mockResolvedValue(fakeBrowser);
+  await launchBrowser();
+  expect(spy).toHaveBeenCalled();
+  spy.mockRestore();
+});
+
+test("isBrowserInstalled checks the requested engine's path", () => {
+  const spy = spyOn(ENGINES.webkit, "executablePath").mockReturnValue("");
+  expect(isBrowserInstalled("webkit")).toBe(false);
+  spy.mockRestore();
 });

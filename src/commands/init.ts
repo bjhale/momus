@@ -9,6 +9,7 @@ export function configScaffold(): string {
   return `export default {
   dev: "https://dev.example.com",
   prod: "https://www.example.com",
+  browser: "chromium",   // "chromium" | "firefox" | "webkit"
   // insecure: false,   // set true to ignore invalid/self-signed TLS certs (dev only)
 
   discovery: {

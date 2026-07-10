@@ -1,5 +1,7 @@
 // tests/store/db.test.ts
 import { test, expect } from "bun:test";
+import { Database } from "bun:sqlite";
+import { rmSync } from "node:fs";
 import { openDb, startRun, saveComparison, finishRun, readComparisons } from "../../src/store/db";
 import type { ComparisonRecord } from "../../src/types";
 import {
@@ -109,6 +111,57 @@ test("writeSnapshot then readSnapshot round-trips meta", () => {
   expect(s.viewports).toEqual([375, 1280]);
   expect(s.stabilize).toEqual(STAB);
   expect(s.configJson).toBe('{"k":1}');
+});
+
+test("writeSnapshot then readSnapshot round-trips the browser", () => {
+  const db = openDb(":memory:");
+  writeSnapshot(db, { createdAt: "a", prodBaseUrl: "https://one.com", viewports: [1], stabilize: STAB, configJson: "{}", browser: "firefox" });
+  expect(readSnapshot(db)!.browser).toBe("firefox");
+});
+
+test("readSnapshot defaults browser to chromium when the column is null", () => {
+  const db = openDb(":memory:");
+  // Simulate an old snapshot row written before the browser column existed.
+  db.query(
+    `INSERT INTO snapshot (id, created_at, prod_base_url, viewports_json, stabilize_json, config_json)
+     VALUES (1, 'a', 'https://one.com', '[1]', '{}', '{}')`,
+  ).run();
+  expect(readSnapshot(db)!.browser).toBe("chromium");
+});
+
+test("openDb migrates a pre-existing DB that lacks the snapshot.browser column", () => {
+  // Use an on-disk file: the migration branch targets pre-existing DBs, which
+  // :memory: can never represent (a fresh in-memory DB already has the column).
+  const path = `${import.meta.dir}/.tmp-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`;
+  const cleanup = () => {
+    for (const p of [path, `${path}-wal`, `${path}-shm`]) rmSync(p, { force: true });
+  };
+  try {
+    // Create an OLD-schema snapshot table WITHOUT the browser column, insert a row.
+    const raw = new Database(path);
+    raw.exec(
+      `CREATE TABLE snapshot (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, prod_base_url TEXT NOT NULL, viewports_json TEXT NOT NULL, stabilize_json TEXT NOT NULL, config_json TEXT NOT NULL);`,
+    );
+    raw.query(
+      `INSERT INTO snapshot (id, created_at, prod_base_url, viewports_json, stabilize_json, config_json)
+       VALUES (1, 'a', 'https://one.com', '[1]', '{}', '{}')`,
+    ).run();
+    raw.close();
+
+    // Code under test: openDb must ALTER the table to add the browser column.
+    const db = openDb(path);
+    const cols = (db.query("PRAGMA table_info(snapshot)").all() as Array<{ name: string }>).map((c) => c.name);
+    expect(cols).toContain("browser");
+    expect(readSnapshot(db)!.browser).toBe("chromium");
+    db.close();
+
+    // Idempotency: opening the migrated file again must not throw and still reads back.
+    const db2 = openDb(path);
+    expect(readSnapshot(db2)!.browser).toBe("chromium");
+    db2.close();
+  } finally {
+    cleanup();
+  }
 });
 
 test("writeSnapshot replaces the single snapshot row", () => {

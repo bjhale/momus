@@ -7,6 +7,10 @@ import type { SnapshotMeta } from "../store/db";
  * or null when the live config is compatible with the baseline. Compared
  * field-by-field so SQLite/JSON key ordering can never cause a false mismatch. */
 export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta): string | null {
+  if (config.browser !== (snapshot.browser ?? "chromium")) {
+    return `browser differs: config "${config.browser}" vs baseline "${snapshot.browser ?? "chromium"}"`;
+  }
+
   const cv = config.viewports, sv = snapshot.viewports;
   if (cv.length !== sv.length || cv.some((v, i) => v !== sv[i])) {
     return `viewports differ: config ${JSON.stringify(cv)} vs baseline ${JSON.stringify(sv)}`;

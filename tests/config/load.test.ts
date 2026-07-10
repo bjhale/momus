@@ -61,3 +61,13 @@ test("--insecure overrides config.insecure (CLI wins)", () => {
   expect(resolveConfig({ ...base, insecure: false }, { insecure: true }).insecure).toBe(true);
   expect(resolveConfig(base, {}).insecure).toBe(false); // default
 });
+
+test("--browser overrides the config-file browser value", () => {
+  const c = resolveConfig({ ...base, browser: "chromium" }, { browser: "firefox" });
+  expect(c.browser).toBe("firefox");
+});
+
+test("browser falls back to the file value when no override", () => {
+  const c = resolveConfig({ ...base, browser: "webkit" }, {});
+  expect(c.browser).toBe("webkit");
+});

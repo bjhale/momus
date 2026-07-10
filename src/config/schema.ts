@@ -6,6 +6,7 @@ export const ConfigSchema = z.object({
   prod: z.string().url(),
   insecure: z.boolean().default(false),
   requestHeaders: z.record(z.string(), z.string()).default({}),
+  browser: z.enum(["chromium", "firefox", "webkit"]).default("chromium"),
   discovery: z.object({
     urlList: z.string().optional(),
     sitemap: z.boolean().default(true),
