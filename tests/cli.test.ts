@@ -36,3 +36,8 @@ test("parses --insecure", () => {
   expect(parseCliArgs(["run", "--insecure"]).overrides.insecure).toBe(true);
   expect(parseCliArgs(["run"]).overrides.insecure).toBeUndefined();
 });
+
+test("--browser flag is parsed into overrides", () => {
+  const parsed = parseCliArgs(["run", "--browser", "webkit"]);
+  expect(parsed.overrides.browser).toBe("webkit");
+});
