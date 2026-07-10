@@ -3,15 +3,6 @@ export default {
   prod: "https://www.example.com",
   // insecure: false,   // set true to ignore invalid/self-signed TLS certs (dev only)
 
-  requestHeaders: {
-    ...(Bun.env.CF_ACCESS_CLIENT_ID && {
-      "CF-Access-Client-Id": Bun.env.CF_ACCESS_CLIENT_ID,
-    }),
-    ...(Bun.env.CF_ACCESS_CLIENT_SECRET && {
-      "CF-Access-Client-Secret": Bun.env.CF_ACCESS_CLIENT_SECRET,
-    }),
-  },
-
   discovery: {
     // urlList: "urls.txt",   // optional: newline-delimited full URLs or paths
     sitemap: true,
