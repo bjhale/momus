@@ -1,0 +1,35 @@
+export default {
+  dev: "https://dev.example.com",
+  prod: "https://www.example.com",
+  // insecure: false,   // set true to ignore invalid/self-signed TLS certs (dev only)
+
+  discovery: {
+    // urlList: "urls.txt",   // optional: newline-delimited full URLs or paths
+    sitemap: true,
+    maxPages: 500,
+    crawl: false,
+    include: ["/**"],
+    exclude: ["/admin/**"],
+  },
+
+  viewports: [375, 768, 1280],
+
+  stabilize: {
+    waitUntil: "networkidle",
+    settleMs: 500,
+    timeoutMs: 15000,
+    disableAnimations: true,
+    mask: [".carousel", ".ad-slot", "[data-timestamp]"],
+    // remove: [".cookie-banner"],   // delete elements from the DOM before capture (space collapses)
+  },
+
+  diff: {
+    threshold: 0.1,
+    failScore: 0.01,
+    overrides: [{ path: "/blog/**", failScore: 0.05 }],
+  },
+
+  concurrency: { screenshots: 6, diffWorkers: 4 },
+
+  output: { report: "momus-report.html", db: "momus.sqlite" },
+};

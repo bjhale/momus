@@ -7,8 +7,9 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
+    "types": ["bun-types"],
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "momus.config.ts"]
 }

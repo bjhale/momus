@@ -9,7 +9,7 @@ test("passes tls rejectUnauthorized:false when insecure", async () => {
     return new Response("body", { status: 200 });
   }) as unknown as typeof fetch;
 
-  const f = makeFetcher(true, fake);
+  const f = makeFetcher(true, undefined, fake);
   const r = await f("https://x.example");
 
   expect(seenInit?.tls?.rejectUnauthorized).toBe(false);
@@ -25,7 +25,7 @@ test("passes no init when secure", async () => {
     return new Response("", { status: 404 });
   }) as unknown as typeof fetch;
 
-  const f = makeFetcher(false, fake);
+  const f = makeFetcher(false, undefined, fake);
   const r = await f("https://x.example");
 
   expect(seenInit).toBeUndefined();

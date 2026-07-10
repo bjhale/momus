@@ -21,10 +21,12 @@ export async function launchBrowser(): Promise<Browser> {
 
 export async function newContext(
   browser: Browser, viewportWidth: number, ignoreHTTPSErrors = false,
+  extraHTTPHeaders?: Record<string, string>,
 ): Promise<BrowserContext> {
   return browser.newContext({
     viewport: { width: viewportWidth, height: 900 },
     deviceScaleFactor: 1,
     ignoreHTTPSErrors,
+    ...(extraHTTPHeaders && Object.keys(extraHTTPHeaders).length > 0 && { extraHTTPHeaders }),
   });
 }
