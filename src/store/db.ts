@@ -2,6 +2,7 @@
 import { Database } from "bun:sqlite";
 import type { ComparisonRecord } from "../types";
 import type { StabilizeOptions } from "../capture/screenshot";
+import type { BrowserEngine } from "../capture/browser";
 
 // DDL inlined as a string constant (NOT read from a .sql file at runtime) so it
 // is embedded in the `bun build --compile` binary. See the note above Step 1.
@@ -44,7 +45,8 @@ CREATE TABLE IF NOT EXISTS snapshot (
   prod_base_url  TEXT NOT NULL,
   viewports_json TEXT NOT NULL,
   stabilize_json TEXT NOT NULL,
-  config_json    TEXT NOT NULL
+  config_json    TEXT NOT NULL,
+  browser        TEXT
 );
 
 CREATE TABLE IF NOT EXISTS baseline_images (
@@ -62,6 +64,11 @@ export function openDb(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(SCHEMA);
+  // Migrate older DBs: add the snapshot.browser column if it is missing.
+  const cols = db.query("PRAGMA table_info(snapshot)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "browser")) {
+    db.exec("ALTER TABLE snapshot ADD COLUMN browser TEXT;");
+  }
   return db;
 }
 
@@ -121,14 +128,15 @@ export interface SnapshotMeta {
   viewports: number[];
   stabilize: StabilizeOptions;
   configJson: string;
+  browser?: BrowserEngine;
 }
 
 export function writeSnapshot(db: Database, m: SnapshotMeta): void {
   db.exec("DELETE FROM snapshot;");
   db.query(
-    `INSERT INTO snapshot (id, created_at, prod_base_url, viewports_json, stabilize_json, config_json)
-     VALUES (1, ?, ?, ?, ?, ?)`,
-  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson);
+    `INSERT INTO snapshot (id, created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser)
+     VALUES (1, ?, ?, ?, ?, ?, ?)`,
+  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson, m.browser ?? "chromium");
 }
 
 export function readSnapshot(db: Database): SnapshotMeta | null {
@@ -140,6 +148,7 @@ export function readSnapshot(db: Database): SnapshotMeta | null {
     viewports: JSON.parse(row.viewports_json),
     stabilize: JSON.parse(row.stabilize_json),
     configJson: row.config_json,
+    browser: (row.browser ?? "chromium") as BrowserEngine,
   };
 }
 
