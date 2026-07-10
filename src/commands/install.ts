@@ -21,7 +21,7 @@ export async function installBrowser(): Promise<number> {
     console.error(
       [
         "momus could not download the browser engines.",
-        "Install it with Playwright's installer, then re-run momus:",
+        "Install them with Playwright's installer, then re-run momus:",
         "",
         "  npx playwright install chromium firefox webkit",
         "",
