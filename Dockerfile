@@ -24,11 +24,11 @@ COPY --from=oven/bun:1.3.14 /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
-# The Playwright base image ships Chromium only. Add Firefox and WebKit so the
-# `browser` config can select any engine. They install into the base image's
-# PLAYWRIGHT_BROWSERS_PATH; the base image already carries the OS deps for this
-# Playwright version.
-RUN bunx playwright install firefox webkit
+# Ensure Firefox and WebKit are present so the `browser` config can select any
+# engine. The Playwright base image already bundles all three matched browsers,
+# so this is a fast no-op that also guarantees the engines if a future base tag
+# ships fewer. `bun x` (not `bunx`) — only the `bun` binary is copied in above.
+RUN bun x playwright install firefox webkit
 COPY tsconfig.json ./
 COPY src ./src
 
