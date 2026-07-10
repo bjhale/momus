@@ -15,11 +15,6 @@ import type { ResolvedConfig } from "../config/schema";
 import { makeProgress } from "../progress";
 
 export async function runCommand(parsed: ParsedCli): Promise<number> {
-  if (!isBrowserInstalled()) {
-    console.error("No browser found. Run `momus install-browser` first.");
-    return 2;
-  }
-
   const configPath = parsed.configPath ?? `${process.cwd()}/momus.config.ts`;
   let config: ResolvedConfig;
   try {
@@ -30,10 +25,15 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
     return 2;
   }
 
+  if (!isBrowserInstalled(config.browser)) {
+    console.error(`No ${config.browser} browser found. Run \`momus install-browser\` first.`);
+    return 2;
+  }
+
   // Preserve the DB file across runs so a prod baseline is reused (freeze).
   // A run materializes a baseline on first use, then reuses it thereafter.
   const db = openDb(config.output.db);
-  const browser = await launchBrowser();
+  const browser = await launchBrowser(config.browser);
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
   const progress = makeProgress();
 
