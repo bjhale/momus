@@ -111,6 +111,22 @@ test("writeSnapshot then readSnapshot round-trips meta", () => {
   expect(s.configJson).toBe('{"k":1}');
 });
 
+test("writeSnapshot then readSnapshot round-trips the browser", () => {
+  const db = openDb(":memory:");
+  writeSnapshot(db, { createdAt: "a", prodBaseUrl: "https://one.com", viewports: [1], stabilize: STAB, configJson: "{}", browser: "firefox" });
+  expect(readSnapshot(db)!.browser).toBe("firefox");
+});
+
+test("readSnapshot defaults browser to chromium when the column is null", () => {
+  const db = openDb(":memory:");
+  // Simulate an old snapshot row written before the browser column existed.
+  db.query(
+    `INSERT INTO snapshot (id, created_at, prod_base_url, viewports_json, stabilize_json, config_json)
+     VALUES (1, 'a', 'https://one.com', '[1]', '{}', '{}')`,
+  ).run();
+  expect(readSnapshot(db)!.browser).toBe("chromium");
+});
+
 test("writeSnapshot replaces the single snapshot row", () => {
   const db = openDb(":memory:");
   writeSnapshot(db, { createdAt: "a", prodBaseUrl: "https://one.com", viewports: [1], stabilize: STAB, configJson: "{}" });

@@ -9,8 +9,21 @@ function cfg(over: Record<string, unknown> = {}) {
 }
 
 function snapFrom(c: ReturnType<typeof cfg>): SnapshotMeta {
-  return { createdAt: "t", prodBaseUrl: c.prod, viewports: c.viewports, stabilize: c.stabilize, configJson: "{}" };
+  return { createdAt: "t", prodBaseUrl: c.prod, viewports: c.viewports, stabilize: c.stabilize, configJson: "{}", browser: c.browser };
 }
+
+test("differing browser → conflict mentioning browser", () => {
+  const c = cfg({ browser: "firefox" });
+  const snap = snapFrom(cfg({ browser: "chromium" }));
+  const msg = baselineConflict(c, snap);
+  expect(msg).not.toBeNull();
+  expect(msg!.toLowerCase()).toContain("browser");
+});
+
+test("matching browser → no browser conflict", () => {
+  const c = cfg({ browser: "webkit" });
+  expect(baselineConflict(c, snapFrom(c))).toBeNull();
+});
 
 test("matching viewports + stabilize → no conflict", () => {
   const c = cfg();

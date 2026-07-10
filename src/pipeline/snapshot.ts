@@ -54,5 +54,6 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
     viewports: config.viewports,
     stabilize: config.stabilize,
     configJson: JSON.stringify(config),
+    browser: config.browser,
   });
 }
