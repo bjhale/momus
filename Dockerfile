@@ -8,8 +8,10 @@
 # reliable way to ship a working momus in a container.
 #
 # The base image ships Chromium plus every OS library/font it needs, matched to
-# this Playwright version. The tag MUST track the `playwright` version in
-# bun.lock (currently 1.61.1) — bump both together.
+# this Playwright version; this Dockerfile additionally bakes in Firefox and
+# WebKit at build time (see below), so all three engines are available. The tag
+# MUST track the `playwright` version in bun.lock (currently 1.61.1) — bump both
+# together.
 FROM mcr.microsoft.com/playwright:v1.61.1-jammy
 
 # Bun runtime (matches the version momus was built and tested against). Copied
@@ -22,6 +24,11 @@ COPY --from=oven/bun:1.3.14 /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
+# The Playwright base image ships Chromium only. Add Firefox and WebKit so the
+# `browser` config can select any engine. They install into the base image's
+# PLAYWRIGHT_BROWSERS_PATH; the base image already carries the OS deps for this
+# Playwright version.
+RUN bunx playwright install firefox webkit
 COPY tsconfig.json ./
 COPY src ./src
 
