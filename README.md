@@ -13,11 +13,11 @@ diffed in a worker pool, and gated against a configurable score threshold.
 
 ## Install
 
-momus is distributed as a **Docker image** with the Chromium browser and all its
-system libraries baked in — that's how you run it. (Running from source with Bun
-is also supported for development.)
+momus is distributed as a **Docker image** with all three browser engines
+(Chromium, Firefox, WebKit) and their system libraries baked in — that's how you
+run it. (Running from source with Bun is also supported for development.)
 
-### With Docker (recommended — Chromium included)
+### With Docker (recommended — all engines included)
 
 Nothing to install but Docker. Mount your working directory (containing
 `momus.config.ts`) at `/work`:
@@ -36,13 +36,13 @@ the appropriate Docker networking (e.g. `--network host` on Linux, or
 
 ```bash
 bun install            # install dependencies
-bun run src/cli.ts install-browser   # download the Chromium momus drives
+bun run src/cli.ts install-browser   # download the browser engines momus drives
 bun run src/cli.ts run               # capture, diff, and write the report
 ```
 
 Use `bun run src/cli.ts <command>` (or the `bun momus` script) anywhere this
 README shows the `momus` command. From source, `momus install-browser` downloads
-Chromium in-process (a no-op if already present).
+the browser engines in-process (a no-op if already present).
 
 ## Quick start
 
@@ -55,7 +55,7 @@ docker run --rm -v "$PWD:/work" bjhale/momus run --config momus.config.ts
 
 Open the generated `momus-report.html` in any browser — it is fully
 self-contained (images are embedded), so it can be committed as a CI artifact or
-emailed as-is. No `install-browser` step is needed: Chromium is in the image.
+emailed as-is. No `install-browser` step is needed: the browser engines are in the image.
 
 To capture prod once and compare several dev builds against it:
 
@@ -75,7 +75,7 @@ already exists.
 
 ### `momus install-browser`
 
-Downloads the Chromium build momus captures with.
+Downloads the browser engines momus captures with (Chromium, Firefox, WebKit).
 
 ### `momus snapshot [flags]`
 
@@ -94,6 +94,7 @@ frozen prod capture that `momus run` reuses.
 | `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
 | `--crawl` | Force same-origin crawl discovery on. |
 | `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
+| `--browser NAME` | Engine to capture with (`chromium`\|`firefox`\|`webkit`); overrides `browser`. |
 
 The baseline lives in its own tables inside `output.db`; the single SQLite file
 is the portable artifact — commit it or pass it as a CI artifact.
@@ -125,6 +126,7 @@ run; the baseline is preserved.
 | `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
 | `--crawl` | Force same-origin crawl discovery on. |
 | `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
+| `--browser NAME` | Engine to capture with (`chromium`\|`firefox`\|`webkit`); overrides `browser`. |
 
 CLI flags win over config-file values.
 
@@ -147,6 +149,7 @@ export default defineConfig({
   dev: "https://dev.example.com",   // the build under test
   prod: "https://www.example.com",  // the baseline; also the discovery source
   insecure: false,                  // set true to ignore invalid/self-signed TLS certs (dev only)
+  browser: "chromium",              // engine: "chromium" | "firefox" | "webkit"
 
   discovery: {
     // urlList: "urls.txt",                                  // optional: newline-delimited full URLs or paths
@@ -209,6 +212,12 @@ Notes:
   fetches and the browser page loads — for self-signed dev/staging servers. It
   removes MITM protection, so it defaults to `false` and should stay off against
   anything reachable by others; prefer a properly-issued cert or a trusted CA.
+- **`browser`** selects the Playwright engine used for every capture:
+  `"chromium"` (default), `"firefox"`, or `"webkit"`. Override per run with
+  `--browser NAME`. The engine is recorded in the prod baseline; a `momus run`
+  whose `browser` differs from the baseline's fails fast (exit 2), because
+  screenshots from different engines are not comparable. Re-capture with
+  `momus snapshot` to change the baseline's engine.
 - **`requestHeaders`** is an optional map of headers sent on every request — both
   the discovery fetches and the browser page loads — to reach sites behind an
   auth proxy. For example, to get through **Cloudflare Access** with a service
