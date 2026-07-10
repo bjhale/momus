@@ -209,6 +209,40 @@ Notes:
   fetches and the browser page loads — for self-signed dev/staging servers. It
   removes MITM protection, so it defaults to `false` and should stay off against
   anything reachable by others; prefer a properly-issued cert or a trusted CA.
+- **`requestHeaders`** is an optional map of headers sent on every request — both
+  the discovery fetches and the browser page loads — to reach sites behind an
+  auth proxy. For example, to get through **Cloudflare Access** with a service
+  token, pull the credentials from the environment so no secrets live in the
+  config file:
+
+  ```ts
+  export default defineConfig({
+    dev: "https://dev.example.com",
+    prod: "https://www.example.com",
+
+    requestHeaders: {
+      ...(Bun.env.CF_ACCESS_CLIENT_ID && {
+        "CF-Access-Client-Id": Bun.env.CF_ACCESS_CLIENT_ID,
+      }),
+      ...(Bun.env.CF_ACCESS_CLIENT_SECRET && {
+        "CF-Access-Client-Secret": Bun.env.CF_ACCESS_CLIENT_SECRET,
+      }),
+    },
+
+    // …rest of config
+  });
+  ```
+
+  Because the config reads the tokens from `Bun.env`, pass them into the
+  container at runtime with `-e` (Docker forwards the values from your host
+  shell, so the secrets stay out of the image and the config file):
+
+  ```bash
+  docker run --rm -v "$PWD:/work" \
+    -e CF_ACCESS_CLIENT_ID \
+    -e CF_ACCESS_CLIENT_SECRET \
+    bjhale/momus run --config momus.config.ts
+  ```
 
 ## Exit codes
 
