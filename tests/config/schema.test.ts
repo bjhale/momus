@@ -96,6 +96,20 @@ test("requestHeaders rejects non-string values", () => {
   })).toThrow();
 });
 
+test("browser defaults to chromium", () => {
+  const c = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
+  expect(c.browser).toBe("chromium");
+});
+
+test("browser accepts firefox and webkit", () => {
+  expect(ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", browser: "firefox" }).browser).toBe("firefox");
+  expect(ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", browser: "webkit" }).browser).toBe("webkit");
+});
+
+test("browser rejects an unknown engine", () => {
+  expect(() => ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", browser: "safari" })).toThrow();
+});
+
 test("stabilize.remove defaults to [] and accepts selectors", () => {
   const d = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
   expect(d.stabilize.remove).toEqual([]);
