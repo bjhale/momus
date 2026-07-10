@@ -11,11 +11,6 @@ import type { ResolvedConfig } from "../config/schema";
 import { makeProgress } from "../progress";
 
 export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
-  if (!isBrowserInstalled()) {
-    console.error("No browser found. Run `momus install-browser` first.");
-    return 2;
-  }
-
   const configPath = parsed.configPath ?? `${process.cwd()}/momus.config.ts`;
   let config: ResolvedConfig;
   try {
@@ -26,10 +21,15 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
     return 2;
   }
 
+  if (!isBrowserInstalled(config.browser)) {
+    console.error(`No ${config.browser} browser found. Run \`momus install-browser\` first.`);
+    return 2;
+  }
+
   // Open (create if absent) — do NOT delete the DB file: a snapshot only
   // replaces the baseline tables, leaving the file available for later runs.
   const db = openDb(config.output.db);
-  const browser = await launchBrowser();
+  const browser = await launchBrowser(config.browser);
   const progress = makeProgress();
 
   const realFetch = makeFetcher(config.insecure, config.requestHeaders);
