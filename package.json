@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "momus": "bun run src/cli.ts"
+    "momus": "bun run src/cli.ts",
+    "build:dev": "docker build -t momus-dev ."
   },
   "devDependencies": {
     "@types/bun": "latest",
