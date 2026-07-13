@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src", "tests", "momus.config.ts"]
+  "include": ["src", "tests", "momus.config.ts", "site-configs/*.ts"]
 }
