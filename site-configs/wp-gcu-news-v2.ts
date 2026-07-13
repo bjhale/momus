@@ -26,7 +26,7 @@ export default {
 
   stabilize: {
     waitUntil: "networkidle",
-    settleMs: 500,
+    settleMs: 1000,
     timeoutMs: 15000,
     disableAnimations: true,
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],
