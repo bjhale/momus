@@ -59,6 +59,7 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
       getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure, config.requestHeaders),
       diffPool,
       progress,
+      fresh: parsed.fresh,
     });
   } catch (err) {
     console.error(`Run failed: ${err instanceof Error ? err.message : err}`);

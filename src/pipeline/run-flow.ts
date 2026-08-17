@@ -21,6 +21,9 @@ export interface RunFlowArgs {
   getDev: (job: Job) => Promise<CaptureResult>;
   diffPool: DiffPoolLike;
   progress?: Progress;
+  /** Force a new baseline: re-discover and re-capture prod even when the DB
+   * already holds one (ignores freeze). Used by `momus run --fresh`. */
+  fresh?: boolean;
 }
 
 export type RunFlowResult =
@@ -35,7 +38,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
 
   let snapshot = readSnapshot(db);
   let materialized = false;
-  if (!snapshot) {
+  if (!snapshot || args.fresh) {
     // No baseline yet — materialize one now (discover + capture prod). Same
     // ordering guarantees as `momus snapshot`: discovery runs before any clear.
     // snapshotPipeline clears runs/comparisons; runPipeline's startRun clears
