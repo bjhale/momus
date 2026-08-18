@@ -11,6 +11,9 @@ Pages to compare are discovered automatically from the prod site (via
 viewport widths, stabilized (animations disabled, dynamic regions masked),
 diffed in a worker pool, and gated against a configurable score threshold.
 
+Contributors: see [docs/architecture.md](docs/architecture.md) for how it fits
+together and [docs/adr/](docs/adr/) for why it works the way it does.
+
 ## Install
 
 momus is distributed as a **Docker image** with all three browser engines
