@@ -1,13 +1,22 @@
 export default {
-  dev: "https://dev.example.com",
-  prod: "https://www.example.com",
-  browser: "chromium",   // "chromium" | "firefox" | "webkit"
+  dev: "https://news.gce-labs.com/",
+  prod: "https://news.gcu.edu/",
+  browser: "chromium", // "chromium" | "firefox" | "webkit"
   // insecure: false,   // set true to ignore invalid/self-signed TLS certs (dev only)
+
+  requestHeaders: {
+    ...(Bun.env.CF_ACCESS_CLIENT_ID && {
+      "CF-Access-Client-Id": Bun.env.CF_ACCESS_CLIENT_ID,
+    }),
+    ...(Bun.env.CF_ACCESS_CLIENT_SECRET && {
+      "CF-Access-Client-Secret": Bun.env.CF_ACCESS_CLIENT_SECRET,
+    }),
+  },
 
   discovery: {
     // urlList: "urls.txt",   // optional: newline-delimited full URLs or paths
     sitemap: true,
-    maxPages: 500,
+    maxPages: 5,
     crawl: false,
     include: ["/**"],
     exclude: ["/admin/**"],
@@ -17,7 +26,7 @@ export default {
 
   stabilize: {
     waitUntil: "networkidle",
-    settleMs: 500,
+    settleMs: 1000,
     timeoutMs: 15000,
     disableAnimations: true,
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],
