@@ -11,16 +11,13 @@ Pages to compare are discovered automatically from the prod site (via
 viewport widths, stabilized (animations disabled, dynamic regions masked),
 diffed in a worker pool, and gated against a configurable score threshold.
 
-Contributors: see [docs/architecture.md](docs/architecture.md) for how it fits
-together and [docs/adr/](docs/adr/) for why it works the way it does.
+Working on momus itself? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Install
 
 momus is distributed as a **Docker image** with all three browser engines
 (Chromium, Firefox, WebKit) and their system libraries baked in — that's how you
-run it. (Running from source with Bun is also supported for development.)
-
-### With Docker (recommended — all engines included)
+run it.
 
 Nothing to install but Docker. Mount your working directory (containing
 `momus.config.ts`) at `/work`:
@@ -34,18 +31,6 @@ The report and SQLite DB are written into the mounted directory. The container
 needs network access to your `dev`/`prod` URLs — if they run on your host, use
 the appropriate Docker networking (e.g. `--network host` on Linux, or
 `host.docker.internal` in the URLs on Docker Desktop).
-
-### From source (development)
-
-```bash
-bun install            # install dependencies
-bun run src/cli.ts install-browser   # download the browser engines momus drives
-bun run src/cli.ts run               # capture, diff, and write the report
-```
-
-Use `bun run src/cli.ts <command>` (or the `bun momus` script) anywhere this
-README shows the `momus` command. From source, `momus install-browser` downloads
-the browser engines in-process (a no-op if already present).
 
 ## Quick start
 
@@ -137,7 +122,7 @@ CLI flags win over config-file values.
 
 On completion `momus run` prints, for example:
 
-```
+```text
 Wrote momus-report.html (12 comparisons). Exit 0.
 ```
 
@@ -290,35 +275,6 @@ phase for prod capture (on a fresh baseline) and one for dev capture + diff. In 
 non-TTY environment (CI, piped output) it prints a plain progress line
 periodically instead of redrawing. stdout carries only the final summary, so
 piping stdout to a file stays clean.
-
-## Releasing
-
-Releases are cut by pushing a version tag. The
-[`release` workflow](.github/workflows/release.yml) runs the test suite (with a
-real Chromium so the integration/e2e tests execute), then in parallel:
-
-- **GitHub release** — creates a release for the tag with auto-generated notes
-  (a changelog; no binary assets — momus ships as the Docker image).
-- **Docker image** — builds the image on native `amd64` and `arm64` runners and
-  pushes a multi-arch tag to Docker Hub (`:<version>` and `:latest`).
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0   # triggers the release workflow
-```
-
-The tag name becomes the release name and image version.
-
-**Required repository secrets** (Settings → Secrets and variables → Actions) for
-the Docker publish:
-
-| Secret | Value |
-| --- | --- |
-| `DOCKERHUB_USERNAME` | Your Docker Hub username (also the image namespace). |
-| `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://hub.docker.com/settings/security) with write scope. |
-
-The base image tag in the [`Dockerfile`](Dockerfile) tracks the `playwright`
-version in `bun.lock` (currently `1.61.1`) — bump both together on upgrade.
 
 ## Notes & known limitations
 
