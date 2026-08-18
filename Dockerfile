@@ -12,7 +12,7 @@
 # WebKit at build time (see below), so all three engines are available. The tag
 # MUST track the `playwright` version in bun.lock (currently 1.61.1) — bump both
 # together.
-FROM mcr.microsoft.com/playwright:v1.61.1-jammy
+FROM mcr.microsoft.com/playwright:v1.62.1-resolute
 
 # Bun runtime (matches the version momus was built and tested against). Copied
 # from the official image so it tracks the target arch under buildx.
