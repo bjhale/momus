@@ -66,6 +66,39 @@ test("second run freezes: no discovery, no prod re-capture, baseline reused", as
   expect(readSnapshot(db)!.createdAt).toBe("t1");
 });
 
+test("forceSnapshot: re-materializes even when a baseline exists (re-discovers + re-captures prod)", async () => {
+  const db = openDb(":memory:");
+  // First run materializes a baseline: one path, prod png(100).
+  await runFlow({
+    config: cfg(), db, now: "t1",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+
+  // Second run with forceSnapshot:true must NOT freeze — it re-discovers and
+  // re-captures prod, replacing the baseline entirely (new paths + new png 200).
+  let discovered = false, prodCaptured = false;
+  const res = await runFlow({
+    config: cfg(), db, now: "t2", forceSnapshot: true,
+    discover: async () => { discovered = true; return ["/", "/about"]; },
+    captureProd: async () => { prodCaptured = true; return { ok: true, png: png(200) }; },
+    getDev: async () => ({ ok: true, png: png(50) }),
+    diffPool,
+  });
+
+  expect(res).toEqual({ ok: true, materialized: true, createdAt: "t2" });
+  expect(discovered).toBe(true);
+  expect(prodCaptured).toBe(true);
+  // Baseline replaced: now 2 paths, snapshot re-dated, prod BLOB is the new png.
+  expect(readBaselineImages(db).length).toBe(2);
+  expect(readSnapshot(db)!.createdAt).toBe("t2");
+  const rows = readComparisons(db, 1);
+  expect(rows.length).toBe(2);
+  for (const r of rows) expect(Array.from(r.prodImage!)).toEqual(Array.from(png(200)));
+});
+
 test("run row records the baseline's prod URL, not the live config prod", async () => {
   const db = openDb(":memory:");
   await runFlow({

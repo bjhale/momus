@@ -6,3 +6,4 @@ momus-report.html
 dist/
 momus
 .env
+site-configs/

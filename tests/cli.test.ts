@@ -41,3 +41,8 @@ test("--browser flag is parsed into overrides", () => {
   const parsed = parseCliArgs(["run", "--browser", "webkit"]);
   expect(parsed.overrides.browser).toBe("webkit");
 });
+
+test("parses --snapshot into a run-mode flag (not a config override)", () => {
+  expect(parseCliArgs(["run", "--snapshot"]).forceSnapshot).toBe(true);
+  expect(parseCliArgs(["run"]).forceSnapshot).toBeUndefined();
+});

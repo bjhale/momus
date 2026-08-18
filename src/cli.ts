@@ -6,6 +6,10 @@ export interface ParsedCli {
   command: "run" | "snapshot" | "init" | "install-browser" | "help";
   overrides: CliOverrides;
   configPath?: string;
+  /** `run --snapshot`: re-capture the prod baseline before diffing. Named
+   * `forceSnapshot` internally so it never reads as the baseline row or the
+   * `snapshot` command. */
+  forceSnapshot?: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -25,6 +29,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       "max-pages": { type: "string" },
       insecure: { type: "boolean" },
       browser: { type: "string" },
+      snapshot: { type: "boolean" },
     },
     allowPositionals: true,
   });
@@ -39,7 +44,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   if (values.insecure) overrides.insecure = true;
   if (values.browser) overrides.browser = values.browser as string;
 
-  return { command, overrides, configPath: values.config as string | undefined };
+  return { command, overrides, configPath: values.config as string | undefined, forceSnapshot: values.snapshot as boolean | undefined };
 }
 
 // --- Runtime dispatch (integration test covers it, not unit tests) ---
@@ -66,7 +71,7 @@ async function main(): Promise<void> {
         process.exit(await snapshotCommand(parsed));
       }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot]`);
         process.exit(0);
     }
   } catch (err) {
