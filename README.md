@@ -112,11 +112,10 @@ a stored **prod baseline**:
   live config's `viewports` or `stabilize` settings differ from the baseline's.
 
 Because prod is frozen after the first run, repeated `momus run` invocations diff
-against the same prod baseline. To re-capture prod, run `momus snapshot` (which
-replaces the baseline), or pass `momus run --fresh` to re-discover and re-capture
-prod in the same invocation (useful when a single disposable `output.db` is reused
-across different sites). Only the `runs`/`comparisons` tables are refreshed each
-run; the baseline is preserved.
+against the same prod baseline; only the `runs`/`comparisons` tables are refreshed
+each run. To re-capture prod, run `momus snapshot` (which replaces the baseline),
+or pass `momus run --snapshot` to do that re-capture and the diff in a single
+invocation.
 
 | Flag | Description |
 | --- | --- |
@@ -129,7 +128,7 @@ run; the baseline is preserved.
 | `--crawl` | Force same-origin crawl discovery on. |
 | `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
 | `--browser NAME` | Engine to capture with (`chromium`\|`firefox`\|`webkit`); overrides `browser`. |
-| `--fresh` | Force a new prod baseline: re-discover and re-capture prod even when `output.db` already holds one (ignores the freeze). Use it when reusing a single disposable DB across different sites/configs. |
+| `--snapshot` | Re-capture the prod baseline before diffing, even when `output.db` already holds one (ignores the freeze). Equivalent to running `momus snapshot` first, in a single invocation. |
 
 CLI flags win over config-file values.
 

@@ -66,7 +66,7 @@ test("second run freezes: no discovery, no prod re-capture, baseline reused", as
   expect(readSnapshot(db)!.createdAt).toBe("t1");
 });
 
-test("fresh: re-materializes even when a baseline exists (re-discovers + re-captures prod)", async () => {
+test("forceSnapshot: re-materializes even when a baseline exists (re-discovers + re-captures prod)", async () => {
   const db = openDb(":memory:");
   // First run materializes a baseline: one path, prod png(100).
   await runFlow({
@@ -77,11 +77,11 @@ test("fresh: re-materializes even when a baseline exists (re-discovers + re-capt
     diffPool,
   });
 
-  // Second run with fresh:true must NOT freeze — it re-discovers and re-captures
-  // prod, replacing the baseline entirely (new paths + new prod png 200).
+  // Second run with forceSnapshot:true must NOT freeze — it re-discovers and
+  // re-captures prod, replacing the baseline entirely (new paths + new png 200).
   let discovered = false, prodCaptured = false;
   const res = await runFlow({
-    config: cfg(), db, now: "t2", fresh: true,
+    config: cfg(), db, now: "t2", forceSnapshot: true,
     discover: async () => { discovered = true; return ["/", "/about"]; },
     captureProd: async () => { prodCaptured = true; return { ok: true, png: png(200) }; },
     getDev: async () => ({ ok: true, png: png(50) }),
