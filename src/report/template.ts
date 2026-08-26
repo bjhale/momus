@@ -25,8 +25,8 @@ function item(r: ComparisonRecord): string {
   return `<details class="item ${cls}">
   <summary>${badge} <span class="path">${esc(r.path)}</span> <span class="vp">@${r.viewport}</span> <span class="score">${pct}%</span></summary>
   <div class="triptych">
-    <figure><figcaption>dev</figcaption><img src="${b64(r.devImage)}" alt="dev"></figure>
-    <figure><figcaption>prod</figcaption><img src="${b64(r.prodImage)}" alt="prod"></figure>
+    <figure><figcaption><a href="${esc(r.devUrl)}" target="_blank" rel="noopener">dev</a></figcaption><img src="${b64(r.devImage)}" alt="dev"></figure>
+    <figure><figcaption><a href="${esc(r.prodUrl)}" target="_blank" rel="noopener">prod</a></figcaption><img src="${b64(r.prodImage)}" alt="prod"></figure>
     <figure><figcaption>diff</figcaption><img src="${b64(r.diffImage)}" alt="diff"></figure>
   </div>
 </details>`;
@@ -91,6 +91,8 @@ const STYLES = `
   .triptych { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem; padding: 0 1.5rem 1rem; }
   figure { margin: 0; }
   figcaption { color: #888; font-size: .75rem; margin-bottom: .25rem; }
+  figcaption a { color: inherit; text-decoration: underline; }
+  figcaption a:hover { color: #ccc; }
   img { max-width: 100%; border: 1px solid #444; background: #fff; }
   .msg { color: #f99; padding: 0 1.5rem 1rem; }
   main[data-filter="passed"] .item:not(.pass) { display: none; }
