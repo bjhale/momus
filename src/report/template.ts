@@ -41,7 +41,10 @@ function figure(images: ImageSource, r: ComparisonRecord, side: ImageSide, w?: n
   const size = w && h ? ` width="${w}" height="${h}"` : "";
   const fw = r.width && w && w !== r.width ? ` style="--fw:${(w / r.width).toFixed(4)}"` : "";
   const img = `<img src="${esc(ref?.src ?? "")}"${full} alt="${side}"${size} loading="lazy" decoding="async">`;
-  return `<figure data-side="${side}"><figcaption>${side}</figcaption><div class="frame"${fw}>` +
+  // The caption links the live page; a removed or source-error row has no URL to link.
+  const url = side === "dev" ? r.devUrl : side === "prod" ? r.prodUrl : "";
+  const caption = url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${side}</a>` : side;
+  return `<figure data-side="${side}"><figcaption>${caption}</figcaption><div class="frame"${fw}>` +
     (single ? linkFull(img, ref) : img) +
     `${boxes(r.regions, w, h, "box")}${boxes(r.unstableRegions, w, h, "box unstable")}</div></figure>`;
 }
