@@ -7,6 +7,9 @@ import { readSnapshot, readBaselineImages, type BaselineImageRow } from "../stor
 import { snapshotPipeline } from "./snapshot";
 import { baselineConflict } from "./compat";
 import { runPipeline, type Job, type DiffPoolLike } from "./run";
+import { pagesSource } from "../targets/pages";
+import { reconcile } from "../targets/reconcile";
+import { checkTargetIds, type Target, type TargetSource, type TargetSourceName } from "../targets/target";
 
 export interface RunFlowArgs {
   config: ResolvedConfig;
@@ -15,6 +18,11 @@ export interface RunFlowArgs {
   now: string;
   /** Discover prod paths — only called when a baseline must be materialized. */
   discover: () => Promise<string[]>;
+  /** Sources beyond pages. None ship yet (RFC-0004 scenarios, RFC-0005 storybook). */
+  sources?: TargetSource[];
+  /** Read the urlList file; injectable for tests. A run re-reads it so new
+   * entries show as `added` (ADR-0022). */
+  readUrlList?: (path: string) => Promise<string>;
   /** Capture a prod page — only called when materializing a baseline. */
   captureProd: (url: string, viewport: number, cfg: ResolvedConfig) => Promise<CaptureResult>;
   /** Capture a dev page — always a live capture. */
@@ -49,6 +57,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
     await snapshotPipeline({
       config, db, createdAt: args.now,
       discover: args.discover,
+      sources: args.sources,
       captureFn: args.captureProd,
       progress: args.progress,
     });
@@ -61,18 +70,34 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
 
   const images = readBaselineImages(db);
   const byKey = new Map<string, BaselineImageRow>(
-    images.map((im) => [`${im.path} ${im.viewport}`, im]));
+    images.map((im) => [`${im.targetId} ${im.viewport}`, im]));
+  const sources: TargetSource[] = [
+    pagesSource({ config, discover: args.discover, readUrlList: args.readUrlList }),
+    ...(args.sources ?? []),
+  ];
 
   await runPipeline({
     config, db, startedAt: args.now, prodBaseUrl: snapshot.prodBaseUrl,
-    listJobs: async (): Promise<Job[]> => images.map((im) => ({
-      path: im.path, viewport: im.viewport,
-      devUrl: new URL(im.path, config.dev).toString(),
-      prodUrl: im.prodUrl,
-    })),
+    listJobs: async (): Promise<Job[]> => {
+      const live = new Map<TargetSourceName, Target[]>();
+      const failed = new Map<TargetSourceName, string>();
+      for (const source of sources) {
+        // One source failing must not abort the run or fake every one of its
+        // targets as removed: reconcile() turns it into a single error row.
+        try {
+          const targets = await source.listLive(images.filter((im) => im.source === source.name));
+          checkTargetIds(targets);
+          live.set(source.name, targets);
+        } catch (err) {
+          failed.set(source.name, err instanceof Error ? err.message : String(err));
+        }
+      }
+      return reconcile({ baseline: images, live, failed, viewports: config.viewports });
+    },
     getDev: args.getDev,
     getProd: async (job: Job) => {
-      const im = byKey.get(`${job.path} ${job.viewport}`)!;
+      const im = byKey.get(`${job.targetId ?? job.path} ${job.viewport}`);
+      if (!im) return { ok: false, error: "no baseline image for this target" };
       return im.status === "ok" && im.image
         ? { ok: true, png: im.image }
         : { ok: false, error: im.error ?? "prod capture failed in snapshot" };

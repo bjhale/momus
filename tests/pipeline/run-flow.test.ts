@@ -6,6 +6,8 @@ import { openDb, readComparisons, readSnapshot, readBaselineImages } from "../..
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
 import type { Progress } from "../../src/progress";
+import { exitCodeFor } from "../../src/pipeline/verdict";
+import type { Target, TargetSource } from "../../src/targets/target";
 
 function png(v: number): Uint8Array {
   const p = new PNG({ width: 4, height: 4 }); p.data.fill(v);
@@ -211,4 +213,106 @@ test("runFlow drives one phase on a reused (frozen) baseline", async () => {
 
   expect(rec.starts.map((s) => s.label)).toEqual(["Capturing dev + diffing"]);
   expect(rec.stops).toBe(1);
+});
+
+const devOk = async () => ({ ok: true as const, png: png(150) });
+const prodOk = async () => ({ ok: true as const, png: png(100) });
+const scenario = (id: string, extra: Partial<Target> = {}): Target => ({
+  id, source: "scenarios", label: id, path: "/",
+  url: { dev: "https://dev.example.com/", prod: "https://www.example.com/" }, ...extra,
+});
+/** A fake non-page source whose list can change between calls. */
+function scenarios(list: () => Promise<Target[]>): TargetSource {
+  return { name: "scenarios", listForSnapshot: list, listLive: list };
+}
+const byId = (db: ReturnType<typeof openDb>) =>
+  Object.fromEntries(readComparisons(db, 1).map((r) => [r.targetId, r]));
+
+test("frozen run: a urlList entry missing from the baseline is added; discovery never runs", async () => {
+  const db = openDb(":memory:");
+  const config = cfg({ discovery: { urlList: "urls.txt", sitemap: false } });
+  await runFlow({ config, db, now: "t1", discover: async () => ["/"], readUrlList: async () => "/\n",
+    captureProd: prodOk, getDev: devOk, diffPool });
+
+  await runFlow({ config, db, now: "t2",
+    discover: async () => { throw new Error("must not discover on a frozen baseline"); },
+    readUrlList: async () => "/\n/new\n",
+    captureProd: async () => { throw new Error("must not capture prod"); },
+    getDev: devOk, diffPool });
+
+  const rows = byId(db);
+  expect(rows["/"]!.status).toBe("ok");
+  expect(rows["/new"]!.status).toBe("added");
+  expect(rows["/new"]!.devImage).toBeInstanceOf(Uint8Array);
+  expect(exitCodeFor(readComparisons(db, 1))).toBe(1);
+  expect(exitCodeFor(readComparisons(db, 1), { allowAdded: true, allowRemoved: false })).toBe(0);
+});
+
+test("a page dropped from the urlList is still compared, never removed", async () => {
+  const db = openDb(":memory:");
+  const config = cfg({ discovery: { urlList: "urls.txt", sitemap: false } });
+  await runFlow({ config, db, now: "t1", discover: async () => ["/", "/old"], readUrlList: async () => "/\n/old\n",
+    captureProd: prodOk, getDev: devOk, diffPool });
+  await runFlow({ config, db, now: "t2", discover: async () => [], readUrlList: async () => "/\n",
+    captureProd: prodOk, getDev: devOk, diffPool });
+  expect(byId(db)["/old"]!.status).toBe("ok");
+});
+
+test("a scenario gone from its source's live list is removed", async () => {
+  const db = openDb(":memory:");
+  let live = [scenario("scenarios:a"), scenario("scenarios:b")];
+  const sources = [scenarios(async () => live)];
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  live = [scenario("scenarios:a")];
+  await runFlow({ config: cfg(), db, now: "t2", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  const rows = byId(db);
+  expect(rows["scenarios:a"]!.status).toBe("ok");
+  expect(rows["scenarios:b"]!.status).toBe("removed");
+  expect(rows["scenarios:b"]!.prodImage).toBeInstanceOf(Uint8Array);
+});
+
+test("a source that fails to list: one error row, its targets skipped, pages still compared", async () => {
+  const db = openDb(":memory:");
+  let fail = false;
+  const sources = [scenarios(async () => { if (fail) throw new Error("index.json unreachable"); return [scenario("scenarios:a")]; })];
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  fail = true;
+  await runFlow({ config: cfg(), db, now: "t2", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  const rows = byId(db);
+  expect(Object.keys(rows).sort()).toEqual(["/", "source:scenarios"]); // no false "removed"
+  expect(rows["source:scenarios"]!.error).toBe("could not list scenarios targets: index.json unreachable");
+  expect(rows["/"]!.status).toBe("ok");
+});
+
+test("an unreadable urlList on a frozen run is one pages source error", async () => {
+  const db = openDb(":memory:");
+  const config = cfg({ discovery: { urlList: "urls.txt", sitemap: false } });
+  await runFlow({ config, db, now: "t1", discover: async () => ["/"], readUrlList: async () => "/\n",
+    captureProd: prodOk, getDev: devOk, diffPool });
+  await runFlow({ config, db, now: "t2", discover: async () => [],
+    readUrlList: async () => { throw new Error("ENOENT: urls.txt"); },
+    captureProd: prodOk, getDev: devOk, diffPool });
+  const rows = readComparisons(db, 1);
+  expect(rows.map((r) => [r.targetId, r.status])).toEqual([["source:pages", "error"]]);
+});
+
+test("a changed recipe errors that target only", async () => {
+  const db = openDb(":memory:");
+  let recipe: Record<string, unknown> = { steps: 1 };
+  const sources = [scenarios(async () => [scenario("scenarios:a", { recipe }), scenario("scenarios:b")])];
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  recipe = { steps: 2 };
+  const res = await runFlow({ config: cfg(), db, now: "t2", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  expect(res.ok).toBe(true); // not a whole-run baseline conflict
+  const rows = byId(db);
+  expect(rows["scenarios:a"]!.status).toBe("error");
+  expect(rows["scenarios:a"]!.error).toContain("recipe changed");
+  expect(rows["scenarios:b"]!.status).toBe("ok");
+  expect(rows["/"]!.status).toBe("ok");
 });
