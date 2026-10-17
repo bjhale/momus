@@ -30,11 +30,26 @@ export async function runSetup(
   if (!setup) return undefined;
 
   if (setup.storageState !== undefined) {
+    const path = JSON.stringify(setup.storageState);
+    let text: string;
     try {
-      return JSON.parse(await readFile(setup.storageState)) as StorageState;
+      text = await readFile(setup.storageState);
     } catch (err) {
-      throw new SetupError(side, `storageState ${JSON.stringify(setup.storageState)}: ${reason(err)}`);
+      throw new SetupError(side, `storageState ${path}: ${reason(err)}`);
     }
+    let state: unknown;
+    try {
+      state = JSON.parse(text);
+    } catch {
+      // Fixed reason: a SyntaxError can quote a token from the file, and the file holds session secrets.
+      throw new SetupError(side, `storageState ${path}: not valid JSON`);
+    }
+    const s = state as { cookies?: unknown; origins?: unknown } | null;
+    // Checked here so a bad file fails setup once (exit 2) instead of erroring every capture.
+    if (typeof s !== "object" || s === null || !Array.isArray(s.cookies) || !Array.isArray(s.origins)) {
+      throw new SetupError(side, `storageState ${path}: expected { cookies: [], origins: [] }`);
+    }
+    return s as StorageState;
   }
 
   let context: BrowserContext | undefined;

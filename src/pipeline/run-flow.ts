@@ -82,6 +82,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
 
   const conflict = baselineConflict(config, snapshot);
   if (conflict) return { ok: false, conflict };
+  // A materialized baseline is already committed if this throws; intended: the baseline is valid, there's just no run.
   await args.setupDev?.();
 
   const images = readBaselineImages(db);

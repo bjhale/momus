@@ -24,3 +24,18 @@ test("an unreadable storageState is a SetupError naming side and file", async ()
   expect(err).toBeInstanceOf(SetupError);
   expect(err.message).toBe('setup (dev) storageState "auth.json": ENOENT');
 });
+
+test("invalid JSON in storageState fails with a fixed reason, not the file text", async () => {
+  const config = ConfigSchema.parse({ ...base, setup: { storageState: "auth.json" } });
+  const err = await runSetup(noBrowser, "dev", config, async () => "{ secret-token").catch((e) => e);
+  expect(err).toBeInstanceOf(SetupError);
+  expect(err.message).toBe('setup (dev) storageState "auth.json": not valid JSON');
+  expect(err.message).not.toContain("secret-token");
+});
+
+test("a storageState of the wrong shape fails setup once", async () => {
+  const config = ConfigSchema.parse({ ...base, setup: { storageState: "auth.json" } });
+  const err = await runSetup(noBrowser, "dev", config, async () => "{}").catch((e) => e);
+  expect(err).toBeInstanceOf(SetupError);
+  expect(err.message).toBe('setup (dev) storageState "auth.json": expected { cookies: [], origins: [] }');
+});
