@@ -38,8 +38,8 @@ is the person deciding whether to approve it.
 
 - Keyboard navigation: next or previous comparison, toggle mode,
   mark approve or reject.
-- Filters: status (failed, errored, new, unstable, passed), kind, viewport, and
-  path search.
+- Filters: status (failed, errored, added, removed, unstable, passed), source,
+  viewport, and path search.
 - Group by target, showing every viewport of a target together.
 
 ### Approvals out of a static file
