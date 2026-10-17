@@ -471,3 +471,48 @@ test("configured scenarios flow through: recipe to both captures, removed when d
     getDev: async () => ({ ok: true, png: png(1) }), diffPool });
   expect(byId(db)["scenarios:nav"]!.status).toBe("removed");
 });
+
+test("materializing: prod setup before prod capture, dev setup before dev capture", async () => {
+  const db = openDb(":memory:");
+  const order: string[] = [];
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"],
+    setupProd: async () => { order.push("setupProd"); },
+    setupDev: async () => { order.push("setupDev"); },
+    captureProd: async () => { order.push("prod"); return { ok: true, png: png(1) }; },
+    getDev: async () => { order.push("dev"); return { ok: true, png: png(1) }; }, diffPool });
+  expect(order).toEqual(["setupProd", "prod", "setupDev", "dev"]);
+});
+
+test("a frozen baseline never logs in to prod", async () => {
+  const db = openDb(":memory:");
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  let devSetups = 0;
+  await runFlow({ config: cfg(), db, now: "t2", discover: async () => ["/"],
+    setupProd: async () => { throw new Error("must not log in to prod on a frozen baseline"); },
+    setupDev: async () => { devSetups++; },
+    captureProd: async () => { throw new Error("frozen"); }, getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  expect(devSetups).toBe(1);
+});
+
+test("a dev setup failure rejects before a run row is written", async () => {
+  const db = openDb(":memory:");
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  const before = listRunIds(db).length;
+  await expect(runFlow({ config: cfg(), db, now: "t2", discover: async () => ["/"],
+    setupDev: async () => { throw new Error("setup (dev) step 2: click \"x\": boom"); },
+    captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool }))
+    .rejects.toThrow("setup (dev) step 2");
+  expect(listRunIds(db).length).toBe(before);
+});
+
+test("a baseline conflict returns before dev setup", async () => {
+  const db = openDb(":memory:");
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  const res = await runFlow({ config: cfg({ viewports: [375] }), db, now: "t2", discover: async () => ["/"],
+    setupDev: async () => { throw new Error("must not log in on a conflict"); },
+    captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  expect(res.ok).toBe(false);
+});

@@ -18,6 +18,9 @@ export interface SnapshotPipelineArgs {
   sources?: TargetSource[];
   captureFn: (url: string, viewport: number, cfg: ResolvedConfig, recipe?: Recipe) => Promise<CaptureResult>;
   progress?: Progress;
+  /** Log in to prod (RFC-0004). After listing, so a discovery failure costs no
+   * login; before the transaction, so a failure leaves the old baseline as is. */
+  setup?: () => Promise<void>;
 }
 
 /** Every prod capture failed, so there is nothing worth freezing. Thrown after
@@ -42,6 +45,7 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
   const sources = [pagesSource({ config, discover: args.discover }), ...(args.sources ?? [])];
   const targets = (await Promise.all(sources.map((s) => s.listForSnapshot()))).flat();
   checkTargetIds(targets);
+  await args.setup?.();
 
   const jobs = targets.flatMap((target) =>
     expandViewports(target, config.viewports).map((viewport) => ({ target, viewport })));

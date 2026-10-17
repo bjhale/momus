@@ -249,3 +249,27 @@ test("captureFn receives each target's recipe; pages get none", async () => {
   expect(seen).toContainEqual(["https://www.example.com/", undefined]);
   expect(seen).toContainEqual(["https://www.example.com/", { steps: [{ click: "b" }] }]);
 });
+
+test("setup runs after listing and before any capture", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  const order: string[] = [];
+  await snapshotPipeline({ config, db, createdAt: "t",
+    discover: async () => { order.push("discover"); return ["/"]; },
+    setup: async () => { order.push("setup"); },
+    captureFn: async () => { order.push("capture"); return { ok: true, png: png(1) }; } });
+  expect(order).toEqual(["discover", "setup", "capture"]);
+});
+
+test("a setup failure rejects, captures nothing, and keeps the previous baseline", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/"],
+    captureFn: async () => ({ ok: true, png: png(1) }) });
+  let captured = false;
+  await expect(snapshotPipeline({ config, db, createdAt: "t2", discover: async () => ["/"],
+    setup: async () => { throw new Error("setup (prod) step 1: goto \"/login\": HTTP 500"); },
+    captureFn: async () => { captured = true; return { ok: true, png: png(2) }; } })).rejects.toThrow("setup (prod)");
+  expect(captured).toBe(false);
+  expect(readSnapshot(db)!.createdAt).toBe("t1");
+});

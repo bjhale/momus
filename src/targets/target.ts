@@ -6,7 +6,7 @@ import type { ResolvedConfig } from "../config/schema";
 export type TargetSourceName = "pages" | "scenarios";
 
 /** How to capture a target beyond "load the URL". Opaque to the pipeline; `capture()`
- * validates it with `RecipeSchema` (RFC-0004). A recipe is is stored with each
+ * validates it with `RecipeSchema` (RFC-0004). A recipe is stored with each
  * baseline row and gated per target (ADR-0023). */
 export type Recipe = Record<string, unknown>;
 

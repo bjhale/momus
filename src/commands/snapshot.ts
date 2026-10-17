@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import type { ParsedCli } from "../cli";
 import { loadConfigFile, resolveConfig } from "../config/load";
 import { isBrowserInstalled, launchBrowser } from "../capture/browser";
-import { capture } from "../capture/screenshot";
+import { captureSeams } from "./capture-seams";
 import { discoverPaths } from "../discovery/discover";
 import { makeFetcher } from "../discovery/fetcher";
 import { openDb, readBaselineImages } from "../store/db";
@@ -50,6 +50,8 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<num
 
   const realFetch = makeFetcher(config.insecure, config.requestHeaders);
 
+  const seams = captureSeams(browser, config);
+
   try {
     await snapshotPipeline({
       config, db, createdAt: new Date().toISOString(),
@@ -64,7 +66,8 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<num
         fetcher: realFetch,
       }),
       sources: [scenariosSource(config)],
-      captureFn: (url, vw, cfg, recipe) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders, { recipe }),
+      setup: seams.setupProd,
+      captureFn: seams.captureProd,
       progress,
     });
   } catch (err) {

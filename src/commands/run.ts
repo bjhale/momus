@@ -3,13 +3,12 @@ import type { Database } from "bun:sqlite";
 import type { ParsedCli } from "../cli";
 import { loadConfigFile, resolveConfig } from "../config/load";
 import { isBrowserInstalled, launchBrowser } from "../capture/browser";
-import { capture } from "../capture/screenshot";
 import { discoverPaths } from "../discovery/discover";
 import { makeFetcher } from "../discovery/fetcher";
 import { DiffPool } from "../diff/pool";
 import { openDb, readComparisons, readBaselineImages } from "../store/db";
 import { runFlow, type RunFlowResult } from "../pipeline/run-flow";
-import type { Job } from "../pipeline/run";
+import { captureSeams } from "./capture-seams";
 import { exitCodeFor } from "../pipeline/verdict";
 import { writeReport } from "../report/report";
 import type { ResolvedConfig } from "../config/schema";
@@ -74,8 +73,7 @@ async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database
         fetcher: realFetch,
       }),
       sources: [scenariosSource(config)],
-      captureProd: (url, vw, cfg, recipe) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders, { recipe }),
-      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure, config.requestHeaders, { recipe: job.recipe }),
+      ...captureSeams(browser, config),
       diffPool,
       progress,
       forceSnapshot: parsed.forceSnapshot,

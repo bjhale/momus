@@ -27,6 +27,11 @@ export interface RunFlowArgs {
   captureProd: (url: string, viewport: number, cfg: ResolvedConfig, recipe?: Recipe) => Promise<CaptureResult>;
   /** Capture a dev page — always a live capture. */
   getDev: (job: Job) => Promise<CaptureResult>;
+  /** Log in to prod. Only called when a baseline is being captured: a frozen
+   * baseline never touches prod (ADR-0011). */
+  setupProd?: () => Promise<void>;
+  /** Log in to dev, once, before any dev capture. */
+  setupDev?: () => Promise<void>;
   diffPool: DiffPoolLike;
   progress?: Progress;
   /** Force a new baseline: re-discover and re-capture prod even when the DB
@@ -68,6 +73,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
       discover: args.discover,
       sources: args.sources,
       captureFn: args.captureProd,
+      setup: args.setupProd,
       progress: args.progress,
     });
     snapshot = readSnapshot(db)!;
@@ -76,6 +82,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
 
   const conflict = baselineConflict(config, snapshot);
   if (conflict) return { ok: false, conflict };
+  await args.setupDev?.();
 
   const images = readBaselineImages(db);
   const byKey = new Map<string, BaselineImageRow>(
