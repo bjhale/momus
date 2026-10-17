@@ -82,15 +82,19 @@ consequences shape, and add a row to the table in
 ## Releasing
 
 Releases are cut by pushing a version tag. The
-[`release` workflow](.github/workflows/release.yml) runs the test suite (with a
-real Chromium, so the integration and e2e tests execute), then in parallel:
+[`release` workflow](.github/workflows/release.yml) type-checks, then in
+parallel:
 
 - **GitHub release** — creates a release for the tag with auto-generated notes
   (a changelog; no binary assets — momus ships as the Docker image).
 - **Docker image** — builds on native `amd64` and `arm64` runners and pushes a
   multi-arch tag to Docker Hub (`:<version>` and `:latest`).
 
+CI does not run the test suite (its browser tests were flaky on shared
+runners), so run it yourself before tagging:
+
 ```bash
+bun run test && bunx tsc --noEmit
 git tag v0.1.0
 git push origin v0.1.0   # triggers the release workflow
 ```
