@@ -4,132 +4,15 @@ import type { ComparisonRecord } from "../types";
 import type { StabilizeOptions } from "../capture/screenshot";
 import type { BrowserEngine } from "../capture/browser";
 import type { TargetSourceName } from "../targets/target";
+import { assertNotTooNew, migrate } from "./migrations";
 
-// Image tables are keyed on (target_id, viewport): RFC-0001. Kept as named
-// constants because the pre-targets migration rebuilds both tables from them.
-const COMPARISONS_DDL = `
-CREATE TABLE IF NOT EXISTS comparisons (
-  id            INTEGER PRIMARY KEY,
-  run_id        INTEGER NOT NULL REFERENCES runs(id),
-  target_id     TEXT NOT NULL,
-  source        TEXT NOT NULL,
-  label         TEXT NOT NULL,
-  path          TEXT NOT NULL,
-  viewport      INTEGER NOT NULL,
-  dev_url       TEXT NOT NULL,
-  prod_url      TEXT NOT NULL,
-  dev_image     BLOB,
-  prod_image    BLOB,
-  diff_image    BLOB,
-  width         INTEGER,
-  height        INTEGER,
-  diff_pixels   INTEGER,
-  diff_score    REAL,
-  passed        INTEGER,
-  status        TEXT NOT NULL,
-  error         TEXT,
-  UNIQUE(run_id, target_id, viewport)
-);`;
-
-const COMPARISONS_INDEX = `CREATE INDEX IF NOT EXISTS idx_comparisons_score ON comparisons(run_id, diff_score DESC);`;
-
-const BASELINE_IMAGES_DDL = `
-CREATE TABLE IF NOT EXISTS baseline_images (
-  target_id   TEXT NOT NULL,
-  source      TEXT NOT NULL,
-  label       TEXT NOT NULL,
-  path        TEXT NOT NULL,
-  viewport    INTEGER NOT NULL,
-  prod_url    TEXT NOT NULL,
-  recipe_json TEXT,
-  image       BLOB,
-  status      TEXT NOT NULL,
-  error       TEXT,
-  UNIQUE(target_id, viewport)
-);`;
-
-// DDL inlined as a string constant (NOT read from a .sql file at runtime) so it
-// is embedded in the `bun build --compile` binary. See the note above Step 1.
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS runs (
-  id            INTEGER PRIMARY KEY,
-  started_at    TEXT NOT NULL,
-  finished_at   TEXT,
-  dev_base_url  TEXT NOT NULL,
-  prod_base_url TEXT NOT NULL,
-  config_json   TEXT NOT NULL,
-  status        TEXT NOT NULL
-);
-${COMPARISONS_DDL}
-${COMPARISONS_INDEX}
-
-CREATE TABLE IF NOT EXISTS snapshot (
-  id             INTEGER PRIMARY KEY,
-  created_at     TEXT NOT NULL,
-  prod_base_url  TEXT NOT NULL,
-  viewports_json TEXT NOT NULL,
-  stabilize_json TEXT NOT NULL,
-  config_json    TEXT NOT NULL,
-  browser        TEXT
-);
-${BASELINE_IMAGES_DDL}
-`;
-
-function hasColumn(db: Database, table: string, column: string): boolean {
-  const cols = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  return cols.some((c) => c.name === column);
-}
-
-/** Pre-RFC-0001 DBs key both image tables on `path`. SQLite can't alter a
- * UNIQUE constraint, so each table is rebuilt with target_id = label = path and
- * source = 'pages'. Those are exactly the ids a pages-only config produces now,
- * so an existing baseline stays diffable. One transaction: a failed rebuild
- * leaves the old tables untouched. */
-function migrateToTargets(db: Database): void {
-  const baselineDone = hasColumn(db, "baseline_images", "target_id");
-  const comparisonsDone = hasColumn(db, "comparisons", "target_id");
-  if (baselineDone && comparisonsDone) return;
-  db.transaction(() => {
-    if (!baselineDone) {
-      db.exec("ALTER TABLE baseline_images RENAME TO baseline_images_pre_targets;");
-      db.exec(BASELINE_IMAGES_DDL);
-      db.exec(`INSERT INTO baseline_images
-        (target_id, source, label, path, viewport, prod_url, recipe_json, image, status, error)
-        SELECT path, 'pages', path, path, viewport, prod_url, NULL, image, status, error
-        FROM baseline_images_pre_targets;`);
-      db.exec("DROP TABLE baseline_images_pre_targets;");
-    }
-    if (!comparisonsDone) {
-      db.exec("ALTER TABLE comparisons RENAME TO comparisons_pre_targets;");
-      // The index moved with the renamed table; drop it so the new table gets its own.
-      db.exec("DROP INDEX IF EXISTS idx_comparisons_score;");
-      db.exec(COMPARISONS_DDL);
-      db.exec(`INSERT INTO comparisons
-        (id, run_id, target_id, source, label, path, viewport, dev_url, prod_url, dev_image, prod_image,
-         diff_image, width, height, diff_pixels, diff_score, passed, status, error)
-        SELECT id, run_id, path, 'pages', path, path, viewport, dev_url, prod_url, dev_image, prod_image,
-         diff_image, width, height, diff_pixels, diff_score, passed, status, error
-        FROM comparisons_pre_targets;`);
-      db.exec("DROP TABLE comparisons_pre_targets;");
-      db.exec(COMPARISONS_INDEX);
-    }
-  })();
-  // DROP TABLE only moves the old BLOB pages to the freelist. The .sqlite file
-  // is the committed baseline artifact, so reclaim them rather than ship the
-  // images twice. VACUUM can't run inside a transaction, hence after commit,
-  // and only here, where a rebuild actually happened.
-  db.exec("VACUUM;");
-}
-
+/** Open (creating if absent) and migrate to the current schema. A DB written
+ * by a newer momus throws DbTooNewError before any write. */
 export function openDb(path: string): Database {
+  assertNotTooNew(path);
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL;");
-  db.exec(SCHEMA);
-  // Migrate older DBs: add the snapshot.browser column if it is missing.
-  if (!hasColumn(db, "snapshot", "browser")) {
-    db.exec("ALTER TABLE snapshot ADD COLUMN browser TEXT;");
-  }
-  migrateToTargets(db);
+  migrate(db);
   return db;
 }
 
