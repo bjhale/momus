@@ -41,6 +41,9 @@ export const ConfigSchema = z.object({
       path: z.string(),
       failScore: z.number().min(0).max(1),
     })).default([]),
+    // Added/removed targets fail the gate unless allowed (RFC-0001, ADR-0022).
+    allowAdded: z.boolean().default(false),
+    allowRemoved: z.boolean().default(false),
   }).default({}),
   concurrency: z.object({
     screenshots: z.number().int().positive().default(6),

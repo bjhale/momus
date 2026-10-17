@@ -46,3 +46,10 @@ test("parses --snapshot into a run-mode flag (not a config override)", () => {
   expect(parseCliArgs(["run", "--snapshot"]).forceSnapshot).toBe(true);
   expect(parseCliArgs(["run"]).forceSnapshot).toBeUndefined();
 });
+
+test("parses --allow-added and --allow-removed", () => {
+  const p = parseCliArgs(["run", "--allow-added", "--allow-removed"]);
+  expect(p.overrides.allowAdded).toBe(true);
+  expect(p.overrides.allowRemoved).toBe(true);
+  expect(parseCliArgs(["run"]).overrides.allowAdded).toBeUndefined();
+});

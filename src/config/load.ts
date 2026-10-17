@@ -12,6 +12,8 @@ export interface CliOverrides {
   maxPages?: number;
   insecure?: boolean;
   browser?: string;
+  allowAdded?: boolean;
+  allowRemoved?: boolean;
 }
 
 /** Merge file config + CLI overrides, then validate. CLI wins (spec §6). */
@@ -38,6 +40,12 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
   }
   if (cli.browser !== undefined) merged.browser = cli.browser as RawConfig["browser"];
   if (cli.insecure !== undefined) merged.insecure = cli.insecure;
+  if (cli.allowAdded !== undefined) {
+    merged.diff = { ...(merged.diff ?? {}), allowAdded: cli.allowAdded };
+  }
+  if (cli.allowRemoved !== undefined) {
+    merged.diff = { ...(merged.diff ?? {}), allowRemoved: cli.allowRemoved };
+  }
   return ConfigSchema.parse(merged);
 }
 

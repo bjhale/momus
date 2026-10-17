@@ -71,3 +71,10 @@ test("browser falls back to the file value when no override", () => {
   const c = resolveConfig({ ...base, browser: "webkit" }, {});
   expect(c.browser).toBe("webkit");
 });
+
+test("--allow-added / --allow-removed override diff.allowAdded / allowRemoved", () => {
+  const c = resolveConfig({ ...base, diff: { failScore: 0.05 } }, { allowAdded: true, allowRemoved: true });
+  expect(c.diff.allowAdded).toBe(true);
+  expect(c.diff.allowRemoved).toBe(true);
+  expect(c.diff.failScore).toBe(0.05); // sibling diff fields untouched
+});

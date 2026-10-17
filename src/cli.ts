@@ -30,6 +30,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       insecure: { type: "boolean" },
       browser: { type: "string" },
       snapshot: { type: "boolean" },
+      "allow-added": { type: "boolean" },
+      "allow-removed": { type: "boolean" },
     },
     allowPositionals: true,
   });
@@ -43,6 +45,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   if (values.crawl) overrides.crawl = true;
   if (values.insecure) overrides.insecure = true;
   if (values.browser) overrides.browser = values.browser as string;
+  if (values["allow-added"]) overrides.allowAdded = true;
+  if (values["allow-removed"]) overrides.allowRemoved = true;
 
   return { command, overrides, configPath: values.config as string | undefined, forceSnapshot: values.snapshot as boolean | undefined };
 }
@@ -71,7 +75,7 @@ async function main(): Promise<void> {
         process.exit(await snapshotCommand(parsed));
       }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed]`);
         process.exit(0);
     }
   } catch (err) {

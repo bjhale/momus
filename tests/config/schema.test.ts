@@ -116,3 +116,9 @@ test("stabilize.remove defaults to [] and accepts selectors", () => {
   const r = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", stabilize: { remove: [".x", "#y"] } });
   expect(r.stabilize.remove).toEqual([".x", "#y"]);
 });
+
+test("diff.allowAdded / allowRemoved default to false", () => {
+  const c = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" });
+  expect(c.diff.allowAdded).toBe(false);
+  expect(c.diff.allowRemoved).toBe(false);
+});
