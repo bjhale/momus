@@ -1,4 +1,5 @@
 // src/commands/snapshot.ts
+import type { Database } from "bun:sqlite";
 import type { ParsedCli } from "../cli";
 import { loadConfigFile, resolveConfig } from "../config/load";
 import { isBrowserInstalled, launchBrowser } from "../capture/browser";
@@ -28,7 +29,21 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
 
   // Open (create if absent) — do NOT delete the DB file: a snapshot only
   // replaces the baseline tables, leaving the file available for later runs.
-  const db = openDb(config.output.db);
+  let db;
+  try {
+    db = openDb(config.output.db);
+  } catch (err) {
+    console.error(`Database error: ${err instanceof Error ? err.message : err}`);
+    return 2;
+  }
+  try {
+    return await snapshotWithDb(config, db);
+  } finally {
+    db.close();
+  }
+}
+
+async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<number> {
   const browser = await launchBrowser(config.browser);
   const progress = makeProgress();
 
@@ -58,7 +73,6 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   }
 
   const count = readBaselineImages(db).length;
-  db.close();
   console.log(`Wrote baseline to ${config.output.db} (${count} prod captures). Exit 0.`);
   return 0;
 }

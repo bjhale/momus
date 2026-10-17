@@ -1,6 +1,7 @@
 // src/cli.ts
 import { parseArgs } from "node:util";
 import type { CliOverrides } from "./config/load";
+import type { CiMetadata } from "./store/db";
 
 export interface ParsedCli {
   command: "run" | "snapshot" | "report" | "init" | "install-browser" | "help";
@@ -12,6 +13,8 @@ export interface ParsedCli {
   forceSnapshot?: boolean;
   /** `report --run`: which stored run to render; default the latest. */
   runId?: number;
+  /** `run --commit/--branch/--pr`: recorded on the run (RFC-0002). */
+  ci?: CiMetadata;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -35,9 +38,18 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       run: { type: "string" },
       "allow-added": { type: "boolean" },
       "allow-removed": { type: "boolean" },
+      commit: { type: "string" },
+      branch: { type: "string" },
+      pr: { type: "string" },
     },
     allowPositionals: true,
   });
+
+  // Flags are global (AGENTS.md); per-command validation is RFC-0009's job.
+  // This one is rejected now because it reads like it does something.
+  if (command === "snapshot" && values.snapshot) {
+    throw new Error("unknown flag for snapshot: --snapshot (did you mean `momus run --snapshot`?)");
+  }
 
   const overrides: CliOverrides = {};
   if (values.dev) overrides.dev = values.dev as string;
@@ -57,7 +69,16 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     if (!Number.isInteger(runId) || runId < 1) throw new Error(`--run expects a positive run id, got "${values.run}"`);
   }
 
-  return { command, overrides, configPath: values.config as string | undefined, forceSnapshot: values.snapshot as boolean | undefined, runId };
+  const ci: CiMetadata = {};
+  if (values.commit) ci.commit = values.commit as string;
+  if (values.branch) ci.branch = values.branch as string;
+  if (values.pr) ci.pr = values.pr as string;
+
+  return {
+    command, overrides, configPath: values.config as string | undefined,
+    forceSnapshot: values.snapshot as boolean | undefined, runId,
+    ci: Object.keys(ci).length ? ci : undefined,
+  };
 }
 
 // --- Runtime dispatch (integration test covers it, not unit tests) ---
@@ -88,7 +109,7 @@ async function main(): Promise<void> {
         process.exit(await reportCommand(parsed));
       }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus report [--run ID] [--out FILE] [--config FILE]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus report [--run ID] [--out FILE] [--config FILE]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed] [--commit SHA] [--branch NAME] [--pr N]`);
         process.exit(0);
     }
   } catch (err) {

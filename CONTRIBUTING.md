@@ -101,6 +101,10 @@ parallel:
 CI does not run the test suite (its browser tests were flaky on shared
 runners), so run it yourself before tagging:
 
+Bump `version` in `package.json` to the release version first and commit it.
+Every run records that version, and the release workflow refuses a tag that
+doesn't match it.
+
 ```bash
 bun run test && bunx tsc --noEmit
 git tag v0.1.0

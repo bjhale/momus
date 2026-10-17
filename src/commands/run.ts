@@ -1,4 +1,5 @@
 // src/commands/run.ts
+import type { Database } from "bun:sqlite";
 import type { ParsedCli } from "../cli";
 import { loadConfigFile, resolveConfig } from "../config/load";
 import { isBrowserInstalled, launchBrowser } from "../capture/browser";
@@ -32,7 +33,23 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
 
   // Preserve the DB file across runs so a prod baseline is reused (freeze).
   // A run materializes a baseline on first use, then reuses it thereafter.
-  const db = openDb(config.output.db);
+  let db;
+  try {
+    db = openDb(config.output.db);
+  } catch (err) {
+    console.error(`Database error: ${err instanceof Error ? err.message : err}`);
+    return 2;
+  }
+  // Everything after this point closes the handle exactly once, in the outer
+  // finally, so no early return can leak it.
+  try {
+    return await runWithDb(parsed, config, db);
+  } finally {
+    db.close(); // also flushes WAL/SHM sidecars cleanly.
+  }
+}
+
+async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database): Promise<number> {
   const browser = await launchBrowser(config.browser);
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
   const progress = makeProgress();
@@ -60,6 +77,8 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
       diffPool,
       progress,
       forceSnapshot: parsed.forceSnapshot,
+      engineVersion: browser.version(),
+      ci: parsed.ci,
     });
   } catch (err) {
     console.error(`Run failed: ${err instanceof Error ? err.message : err}`);
@@ -91,7 +110,6 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   } else {
     console.log(`Reused prod baseline from ${result.createdAt}. Refresh with \`momus snapshot\`.`);
   }
-  db.close(); // flush WAL/SHM sidecars cleanly now that we're done writing.
-  console.log(`Wrote ${config.output.report} (${rows.length} comparisons). Exit ${code}.`);
+  console.log(`Wrote ${config.output.report} for run #${result.runId} (${rows.length} comparisons). Exit ${code}.`);
   return code;
 }

@@ -66,3 +66,15 @@ test("--run must be a positive integer", () => {
   expect(() => parseCliArgs(["report", "--run", "abc"])).toThrow("--run");
   expect(() => parseCliArgs(["report", "--run", "0"])).toThrow("--run");
 });
+
+test("parses --commit, --branch and --pr into CI metadata", () => {
+  expect(parseCliArgs(["run", "--commit", "abc123", "--branch", "main", "--pr", "42"]).ci)
+    .toEqual({ commit: "abc123", branch: "main", pr: "42" });
+  expect(parseCliArgs(["run", "--branch", "x"]).ci).toEqual({ branch: "x" });
+  expect(parseCliArgs(["run"]).ci).toBeUndefined();
+});
+
+test("snapshot --snapshot is an error, not a silent no-op", () => {
+  expect(() => parseCliArgs(["snapshot", "--snapshot"])).toThrow("unknown flag for snapshot: --snapshot");
+  expect(parseCliArgs(["run", "--snapshot"]).forceSnapshot).toBe(true);
+});
