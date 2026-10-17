@@ -75,3 +75,14 @@ test("per-target viewport narrowing: a dropped width is removed, a new one added
   );
   expect(jobs.map((j) => [j.viewport, j.action])).toEqual([[375, "removed"], [1280, "added"]]);
 });
+
+test("a live target's recipe travels on its compare and added jobs", () => {
+  const recipe = { steps: [{ click: "b" }] };
+  const jobs = run(
+    [row("scenarios:a", 1280, "scenarios", '{"steps":[{"click":"b"}]}')],
+    [["scenarios", [target("scenarios:a", "scenarios", { recipe }), target("scenarios:n", "scenarios", { recipe })]]],
+  );
+  expect(jobs.map((j) => [j.targetId, j.action, j.recipe])).toEqual([
+    ["scenarios:a", "compare", recipe], ["scenarios:n", "added", recipe],
+  ]);
+});

@@ -5,7 +5,7 @@ import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
 import type { Progress } from "../progress";
-import { canonicalJson, type TargetSourceName } from "../targets/target";
+import { canonicalJson, type Recipe, type TargetSourceName } from "../targets/target";
 import { startRun, saveComparison, finishRun, type CiMetadata } from "../store/db";
 import { MOMUS_VERSION } from "../version";
 import { mapWithConcurrency } from "./queue";
@@ -37,6 +37,8 @@ export interface Job {
   targetId?: string;
   source?: TargetSourceName;
   label?: string;
+  /** The target's recipe; capture runs it on both sides. */
+  recipe?: Recipe;
   action?: JobAction;
   /** Message for action "error". */
   error?: string;

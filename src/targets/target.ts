@@ -2,12 +2,11 @@
 import type { ResolvedConfig } from "../config/schema";
 
 /** Where a target came from. Provenance only: capture, diff and gating never
- * branch on it (RFC-0001, ADR-0021). Only `pages` ships today; `scenarios` is
- * reserved for RFC-0004. */
+ * branch on it (RFC-0001, ADR-0021). `pages` and `scenarios` (RFC-0004) ship. */
 export type TargetSourceName = "pages" | "scenarios";
 
-/** How to capture a target beyond "load the URL". Opaque until RFC-0004 defines
- * steps and element capture. It exists now so a recipe is stored with each
+/** How to capture a target beyond "load the URL". Opaque to the pipeline; `capture()`
+ * validates it with `RecipeSchema` (RFC-0004). A recipe is is stored with each
  * baseline row and gated per target (ADR-0023). */
 export type Recipe = Record<string, unknown>;
 

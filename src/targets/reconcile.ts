@@ -15,7 +15,8 @@ export interface ReconcileArgs {
 const key = (id: string, viewport: number) => `${id} ${viewport}`;
 
 function fromTarget(t: Target, viewport: number): Job {
-  return { targetId: t.id, source: t.source, label: t.label, path: t.path, viewport, devUrl: t.url.dev, prodUrl: t.url.prod };
+  return { targetId: t.id, source: t.source, label: t.label, path: t.path, viewport, devUrl: t.url.dev, prodUrl: t.url.prod,
+    ...(t.recipe !== undefined ? { recipe: t.recipe } : {}) };
 }
 
 /** Pure: decide what runPipeline does with each (target, viewport). The

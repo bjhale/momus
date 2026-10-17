@@ -13,6 +13,7 @@ import type { Job } from "../pipeline/run";
 import { exitCodeFor } from "../pipeline/verdict";
 import { writeReport } from "../report/report";
 import type { ResolvedConfig } from "../config/schema";
+import { scenariosSource } from "../targets/scenarios";
 import { makeProgress } from "../progress";
 
 export async function runCommand(parsed: ParsedCli): Promise<number> {
@@ -72,8 +73,9 @@ async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
-      captureProd: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders),
-      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure, config.requestHeaders),
+      sources: [scenariosSource(config)],
+      captureProd: (url, vw, cfg, recipe) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders, { recipe }),
+      getDev: (job: Job) => capture(browser, job.devUrl, job.viewport, config.stabilize, config.insecure, config.requestHeaders, { recipe: job.recipe }),
       diffPool,
       progress,
       forceSnapshot: parsed.forceSnapshot,

@@ -9,6 +9,7 @@ import { makeFetcher } from "../discovery/fetcher";
 import { openDb, readBaselineImages } from "../store/db";
 import { snapshotPipeline } from "../pipeline/snapshot";
 import type { ResolvedConfig } from "../config/schema";
+import { scenariosSource } from "../targets/scenarios";
 import { makeProgress } from "../progress";
 
 export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
@@ -62,7 +63,8 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<num
         include: config.discovery.include, exclude: config.discovery.exclude,
         fetcher: realFetch,
       }),
-      captureFn: (url, vw, cfg) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders),
+      sources: [scenariosSource(config)],
+      captureFn: (url, vw, cfg, recipe) => capture(browser, url, vw, cfg.stabilize, cfg.insecure, cfg.requestHeaders, { recipe }),
       progress,
     });
   } catch (err) {

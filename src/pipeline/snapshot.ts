@@ -6,7 +6,7 @@ import type { Progress } from "../progress";
 import { clearBaseline, saveBaselineImage, writeSnapshot } from "../store/db";
 import { mapWithConcurrency } from "./queue";
 import { pagesSource } from "../targets/pages";
-import { canonicalJson, checkTargetIds, expandViewports, type TargetSource } from "../targets/target";
+import { canonicalJson, checkTargetIds, expandViewports, type Recipe, type TargetSource } from "../targets/target";
 
 export interface SnapshotPipelineArgs {
   config: ResolvedConfig;
@@ -14,9 +14,9 @@ export interface SnapshotPipelineArgs {
   createdAt: string;
   /** Pages discovery: the `pages` source, which every project has. */
   discover: () => Promise<string[]>;
-  /** Sources beyond pages. None ship yet (RFC-0004 scenarios). */
+  /** Sources beyond pages, e.g. scenariosSource (RFC-0004). */
   sources?: TargetSource[];
-  captureFn: (url: string, viewport: number, cfg: ResolvedConfig) => Promise<CaptureResult>;
+  captureFn: (url: string, viewport: number, cfg: ResolvedConfig, recipe?: Recipe) => Promise<CaptureResult>;
   progress?: Progress;
 }
 
@@ -67,7 +67,7 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
       if (thrown) { args.progress?.tick(); return; }
       try {
         // capture() never throws; on failure it returns { ok:false, error }.
-        const res = await args.captureFn(target.url.prod, viewport, config);
+        const res = await args.captureFn(target.url.prod, viewport, config, target.recipe);
         if (!res.ok) { failed++; firstError ||= res.error ?? "unknown error"; }
         saveBaselineImage(db, {
           targetId: target.id, source: target.source, label: target.label, path: target.path,

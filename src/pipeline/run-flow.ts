@@ -9,7 +9,7 @@ import { baselineConflict } from "./compat";
 import { runPipeline, type Job, type DiffPoolLike } from "./run";
 import { pagesSource } from "../targets/pages";
 import { reconcile } from "../targets/reconcile";
-import { canonicalJson, checkTargetIds, type Target, type TargetSource, type TargetSourceName } from "../targets/target";
+import { canonicalJson, checkTargetIds, type Recipe, type Target, type TargetSource, type TargetSourceName } from "../targets/target";
 
 export interface RunFlowArgs {
   config: ResolvedConfig;
@@ -18,13 +18,13 @@ export interface RunFlowArgs {
   now: string;
   /** Discover prod paths — only called when a baseline must be materialized. */
   discover: () => Promise<string[]>;
-  /** Sources beyond pages. None ship yet (RFC-0004 scenarios). */
+  /** Sources beyond pages, e.g. scenariosSource (RFC-0004). */
   sources?: TargetSource[];
   /** Read the urlList file; injectable for tests. A run re-reads it so new
    * entries show as `added` (ADR-0022). */
   readUrlList?: (path: string) => Promise<string>;
   /** Capture a prod page — only called when materializing a baseline. */
-  captureProd: (url: string, viewport: number, cfg: ResolvedConfig) => Promise<CaptureResult>;
+  captureProd: (url: string, viewport: number, cfg: ResolvedConfig, recipe?: Recipe) => Promise<CaptureResult>;
   /** Capture a dev page — always a live capture. */
   getDev: (job: Job) => Promise<CaptureResult>;
   diffPool: DiffPoolLike;

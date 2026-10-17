@@ -236,3 +236,16 @@ test("a throwing capture with siblings still in flight leaves the previous basel
   expect(rows.map((r) => r.path)).toEqual(["/"]);
   expect(Array.from(rows[0]!.image!)).toEqual(Array.from(png(50)));
 });
+
+test("captureFn receives each target's recipe; pages get none", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  const seen: Array<[string, unknown]> = [];
+  await snapshotPipeline({
+    config, db, createdAt: "t", discover: async () => ["/"],
+    sources: [fakeSource([scenario("scenarios:nav", { recipe: { steps: [{ click: "b" }] } })])],
+    captureFn: async (url, _vw, _cfg, recipe) => { seen.push([url, recipe]); return { ok: true, png: png(1) }; },
+  });
+  expect(seen).toContainEqual(["https://www.example.com/", undefined]);
+  expect(seen).toContainEqual(["https://www.example.com/", { steps: [{ click: "b" }] }]);
+});

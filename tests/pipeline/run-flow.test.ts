@@ -9,6 +9,7 @@ import type { DiffResponse } from "../../src/diff/worker";
 import type { Progress } from "../../src/progress";
 import { exitCodeFor } from "../../src/pipeline/verdict";
 import type { Target, TargetSource } from "../../src/targets/target";
+import { scenariosSource } from "../../src/targets/scenarios";
 
 function png(v: number): Uint8Array {
   const p = new PNG({ width: 4, height: 4 }); p.data.fill(v);
@@ -448,4 +449,25 @@ test("an all-error materialize doesn't freeze: no baseline, no run, ProdUnreacha
   })).rejects.toBeInstanceOf(ProdUnreachableError);
   expect(readSnapshot(db)).toBeNull();
   expect(listRunIds(db)).toEqual([]);
+});
+
+test("configured scenarios flow through: recipe to both captures, removed when deleted", async () => {
+  const db = openDb(":memory:");
+  const withNav = cfg({ scenarios: [{ id: "nav", path: "/", steps: [{ click: "b" }] }] });
+  const prodRecipes: unknown[] = [];
+  const devRecipes: unknown[] = [];
+  await runFlow({ config: withNav, db, now: "t1", discover: async () => ["/"],
+    sources: [scenariosSource(withNav)],
+    captureProd: async (_u, _v, _c, recipe) => { prodRecipes.push(recipe); return { ok: true, png: png(1) }; },
+    getDev: async (job) => { devRecipes.push(job.recipe); return { ok: true, png: png(1) }; }, diffPool });
+  expect(prodRecipes).toContainEqual({ steps: [{ click: "b" }] });
+  expect(devRecipes).toContainEqual({ steps: [{ click: "b" }] });
+  expect(byId(db)["scenarios:nav"]!.status).toBe("ok");
+
+  const without = cfg();
+  await runFlow({ config: without, db, now: "t2", discover: async () => ["/"],
+    sources: [scenariosSource(without)],
+    captureProd: async () => { throw new Error("frozen"); },
+    getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  expect(byId(db)["scenarios:nav"]!.status).toBe("removed");
 });
