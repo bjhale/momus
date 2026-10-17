@@ -1,6 +1,6 @@
 # RFC-0004: Scripted interactions, element capture, and auth
 
-**Status:** Draft · **Milestone:** M3 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** M3 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -140,7 +140,7 @@ setup: {
   puts one page in one state. A scenario that needs more is a sign it belongs
   in an end-to-end test suite. The config file is TypeScript, so a team that
   wants to reuse steps can spread a shared array (`steps: [...openCookieDialog,
-  …]`) without momus knowing.
+…]`) without momus knowing.
 
 ## Compatibility
 
