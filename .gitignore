@@ -1,5 +1,6 @@
 node_modules/
 *.sqlite
+!tests/fixtures/db/*.sqlite
 *.sqlite-wal
 *.sqlite-shm
 momus-report.html
