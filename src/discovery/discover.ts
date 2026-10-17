@@ -1,5 +1,5 @@
 // src/discovery/discover.ts
-import { matchPath } from "../glob";
+import { pathFilter } from "../glob";
 import { fetchSitemapPaths, type Fetcher } from "./sitemap";
 import { crawlPaths, type CrawlOptions } from "./crawler";
 import { parseUrlList } from "./urllist";
@@ -32,9 +32,7 @@ export async function discoverPaths(args: DiscoverArgs): Promise<string[]> {
   const sitemapFn = args._sitemapFn ?? fetchSitemapPaths;
   const crawlFn = args._crawlFn ?? crawlPaths;
   const readUrlList = args._readUrlList ?? ((p: string) => Bun.file(p).text());
-  const keep = (p: string) =>
-    args.include.some((g) => matchPath(p, g)) &&
-    !args.exclude.some((g) => matchPath(p, g));
+  const keep = pathFilter(args.include, args.exclude);
 
   // Seed set: urlList entries first (explicit → win dedup + the maxPages budget),
   // then sitemap.
