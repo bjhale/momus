@@ -37,7 +37,7 @@ break things, and the changelog says so when they do.
 | --- | --- | --- | --- |
 | **M1** Foundations | Close the known correctness gaps. Keep run history. Version the DB. Generalize "page path" into a *target*. | [0001](docs/rfcs/0001-targets.md), [0002](docs/rfcs/0002-storage-and-run-history.md) | In progress |
 | ~~**M2** Approved baselines~~ | Moved to 2.0 ([ADR-0028](docs/adr/0028-approval-belongs-to-the-server.md)). | [0003](docs/rfcs/0003-approval-workflow.md) | Withdrawn |
-| **M3** Interactions & auth | Per-target steps, element screenshots, and a login/setup phase. | [0004](docs/rfcs/0004-scripted-interactions.md) | Done |
+| **M3** Interactions & auth | Per-target steps, element screenshots, and a login/setup phase. | [0004](docs/rfcs/0004-scripted-interactions.md) | Done (WebKit verification pending) |
 | ~~**M4** Components~~ | No Storybook-specific support; stories are listed as pages. | [0005](docs/rfcs/0005-storybook.md) | Withdrawn |
 | **M5** Signal quality | Fewer false diffs; honest reporting of the ones that remain. | [0006](docs/rfcs/0006-capture-determinism-and-diff-quality.md) | Not started |
 | **M6** Review & CI ergonomics | Report v2 for review and triage; machine-readable output; a GitHub Action. | [0007](docs/rfcs/0007-review-report.md), [0008](docs/rfcs/0008-cli-ci-integration.md) | Not started |

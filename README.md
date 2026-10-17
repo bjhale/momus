@@ -341,10 +341,13 @@ Selectors use Playwright locator syntax (`text=`, `role=` work) and act on the
 - **`capture.element`** screenshots the first matching element instead of the
   page. If nothing matches, the target is an error row; it never falls back to
   the full page. `mask` and `remove` still apply.
-- **`viewports`** narrows a scenario to some of the top-level `viewports`.
+- **`viewports`** narrows a scenario to some of the top-level `viewports`. A
+  width not in the top-level list is a config error.
 - A step that fails, or times out after `stabilize.timeoutMs`, is an error row
   for that scenario, naming the step number (from 1) and selector. The run goes on.
 - Scenarios ignore `discovery.include`, `exclude` and `maxPages`.
+- `diff.overrides` match a scenario's `path`, so a `"/"` override also applies
+  to every scenario at `"/"`.
 - **Don't put credentials in scenario steps.** `goto` is not allowed there, and
   `fill` and `select` values, `evaluate` scripts, and selectors are stored in
   the `.sqlite` as-is.
@@ -368,6 +371,9 @@ setup: {
 ```
 
 `goto` is relative to each side's base URL, so one set of steps logs in to both.
+A shared `storageState` loads one file into both sides; cookies are
+domain-scoped, so when dev and prod are on different hosts use a per-side
+`storageState` instead.
 Dev and prod often need different logins, so `setup` can also be one per side:
 
 ```ts
@@ -392,6 +398,10 @@ header. That shows up as a diff. Use `mask` for it.
   file must be JSON with `cookies` and `origins` arrays.
 - Shared and per-side keys can't be mixed, and a per-side `setup` must define
   both sides.
+- Setup runs at the widest configured viewport, so a login form hidden behind a
+  mobile menu is still reachable.
+- Discovery (sitemap, crawl) doesn't use the setup session. For pages behind
+  the login, list them in `urlList` (or serve a public sitemap).
 - Prod logs in only when momus captures a baseline. A `run` against a frozen
   baseline never touches prod.
 - **A setup failure exits 2**, naming the side and step, for example

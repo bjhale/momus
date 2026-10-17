@@ -65,5 +65,7 @@ stay. `redactConfig` is applied to every stored config (`runs.config_json`,
 - Known limitation, not fixed here: `requestHeaders` values are still stored in
   `config_json`. That predates this work, and a proxy token in a committed
   `.sqlite` deserves its own decision.
+- Discovery (sitemap, crawl) doesn't use the setup session. For pages behind
+  the login, use `urlList` (or a public sitemap).
 - The old baselines (NULL `setup_json`) stay diffable against a config without
   setup, per ADR-0010.

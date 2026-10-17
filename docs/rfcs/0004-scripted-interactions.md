@@ -190,6 +190,9 @@ None.
 - `press` takes a key (on the page) or `[selector, key]`.
 - Selectors act on the **first** match, `capture.element` included.
 - Steps and the element screenshot each get their own `stabilize.timeoutMs`.
+- Prod logs in only when a baseline is captured; a frozen-baseline run never
+  logs in to prod ([ADR-0011](../adr/0011-run-always-diffs-a-baseline.md),
+  [ADR-0030](../adr/0030-setup-per-side.md)).
 - WebKit verification is outstanding: the WebKit tests are written and run via
   `bun run test:engines`, but haven't run yet on a host with WebKit's system
   libraries.

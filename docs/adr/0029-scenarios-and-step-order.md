@@ -24,16 +24,14 @@ only in `setup`: a scenario is one page, its `path`, in one state.
 matches two elements. For "get this page into a state" that is friction with no
 benefit, and one rule everywhere is easier to explain.
 
-**Each step has a timeout of `stabilize.timeoutMs`.** Step indexes in error
+**Each step, and the element screenshot, gets its own `stabilize.timeoutMs`.**
+They sit outside the shared navigation-plus-settle deadline, so a recipe can
+take longer than one `timeoutMs` in total; a slow page load doesn't starve the
+steps, and long scenarios aren't starved by early steps. Step indexes in error
 messages are 1-based, as people count lines in a config. A failing step, or an
 element that matches nothing, is an error row naming the step
 ([ADR-0006](0006-errors-are-rows.md)). Element capture never falls back to the
 full page: a screenshot of the wrong thing passes quietly.
-
-**Steps and the element screenshot each get their own `timeoutMs`.** They sit
-outside the shared navigation-plus-settle deadline. So a recipe can take longer
-than one `timeoutMs` in total; a slow page load doesn't starve the steps, and
-long scenarios aren't starved by early steps.
 
 **Recipes are validated at capture time with `RecipeSchema`.** A recipe stored
 in a baseline row is data from an older momus or a hand-edited file. A malformed
@@ -62,7 +60,7 @@ target.
 - Scenarios ignore `discovery.include`, `exclude` and `maxPages`. A scenario is
   listed on purpose, and a scenario deleted from the config is reported
   `removed` ([ADR-0022](0022-added-and-removed-targets.md)).
-- Scenario `fill` values, `goto` URLs, `select` values and `evaluate` scripts are
+- Scenario `fill` values, `select` values and `evaluate` scripts are
   stored in `baseline_images.recipe_json`, in the `.sqlite`, as-is. Credentials
   belong in `setup` ([ADR-0030](0030-setup-per-side.md)), never in scenario
   steps. The docs say so.
