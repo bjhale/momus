@@ -78,3 +78,16 @@ test("--allow-added / --allow-removed override diff.allowAdded / allowRemoved", 
   expect(c.diff.allowRemoved).toBe(true);
   expect(c.diff.failScore).toBe(0.05); // sibling diff fields untouched
 });
+
+test("config errors are readable lines, one per issue, not ZodError JSON", () => {
+  let message = "";
+  try {
+    resolveConfig({ ...base, viewports: [0], setup: { steps: [{ goto: "/login" }, { fill: ["#password", undefined as unknown as string] }] } }, {});
+  } catch (err) {
+    message = (err as Error).message;
+  }
+  expect(message.split("\n")).toEqual([
+    "viewports.0: Number must be greater than 0",
+    "setup.steps.1.fill.1: fill value is undefined — is the environment variable set?",
+  ]);
+});

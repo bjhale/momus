@@ -46,7 +46,13 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
   if (cli.allowRemoved !== undefined) {
     merged.diff = { ...(merged.diff ?? {}), allowRemoved: cli.allowRemoved };
   }
-  return ConfigSchema.parse(merged);
+  const parsed = ConfigSchema.safeParse(merged);
+  // One `path: message` line per issue: commands print this after "Config
+  // error:", and ZodError's own message is a JSON dump of every issue.
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues.map((i) => `${i.path.join(".") || "(config)"}: ${i.message}`).join("\n"));
+  }
+  return parsed.data;
 }
 
 /** Locate and import a config file, returning the raw (unvalidated) object.

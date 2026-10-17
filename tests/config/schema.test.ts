@@ -196,3 +196,37 @@ test("parsing a resolved config again is idempotent (applyDefaults re-parses)", 
     scenarios: [{ id: "a", path: "/", steps: [{ click: "b" }] }] });
   expect(ConfigSchema.parse(once)).toEqual(once);
 });
+
+// A step is checked against its own verb's schema, so a failure names that
+// verb's issue at its path instead of nine union alternatives.
+const issuesOf = (input: unknown) => {
+  const r = ConfigSchema.safeParse(input);
+  if (r.success) throw new Error("expected a parse failure");
+  return r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+};
+
+test("an undefined fill value (unset env var) is one issue at its path with a hint", () => {
+  const issues = issuesOf({ ...rfc4Base, setup: { steps: [
+    { goto: "/login" }, { fill: ["#password", undefined] }, { click: "button[type=submit]" },
+  ] } });
+  expect(issues).toEqual(["setup.steps.1.fill.1: fill value is undefined — is the environment variable set?"]);
+});
+
+test("an unknown verb lists the verbs; a two-key step says one key", () => {
+  const scen = (step: unknown) => issuesOf({ ...rfc4Base, scenarios: [{ id: "a", path: "/", steps: [step] }] });
+  expect(scen({ tap: "x" })).toEqual([
+    `scenarios.0.steps.0: unknown step "tap"; expected one of click, hover, fill, press, select, scroll, waitFor, wait, evaluate`,
+  ]);
+  expect(scen({ goto: "/x" })[0]).toMatch(/unknown step "goto"/);
+  expect(scen({ click: "x", hover: "y" })).toEqual(["scenarios.0.steps.0: a step has exactly one key, got click, hover"]);
+  expect(scen("click")[0]).toMatch(/^scenarios\.0\.steps\.0: a step is an object/);
+  expect(scen({ wait: -1 })).toHaveLength(1);
+  expect(issuesOf({ ...rfc4Base, setup: { steps: [{ tap: "x" }] } })[0]).toMatch(/expected one of click, .*, goto$/);
+});
+
+test("a scenario's viewports must be among the top-level viewports", () => {
+  expect(issuesOf({ ...rfc4Base, viewports: [1280], scenarios: [{ id: "nav", path: "/", viewports: [375, 1280, 768] }] }))
+    .toEqual([`scenarios.0.viewports: scenario "nav" viewports 375, 768 are not in the top-level viewports (1280)`]);
+  expect(ConfigSchema.parse({ ...rfc4Base, viewports: [375, 1280], scenarios: [{ id: "nav", path: "/", viewports: [375] }] })
+    .scenarios[0]!.viewports).toEqual([375]);
+});

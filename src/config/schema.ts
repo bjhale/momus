@@ -3,24 +3,60 @@ import { z } from "zod";
 
 // Steps are data, never callbacks (RFC-0004): they're stored with the
 // baseline, compared by the per-target gate, and named in error rows. Each is
-// a strict one-key object, so a typo is a config error rather than a no-op.
+// a one-key object, so a typo is a config error rather than a no-op.
 const selector = z.string().min(1);
-export const StepSchema = z.union([
-  z.object({ click: selector }).strict(),
-  z.object({ hover: selector }).strict(),
-  z.object({ fill: z.tuple([selector, z.string()]) }).strict(),
+const stepVerbs = {
+  click: selector,
+  hover: selector,
+  // An unset Bun.env value arrives as undefined; say so rather than "Required".
+  fill: z.tuple([selector, z.string({ required_error: "fill value is undefined — is the environment variable set?" })]),
   // A bare key presses on the page; [selector, key] presses on that element.
-  z.object({ press: z.union([z.string().min(1), z.tuple([selector, z.string().min(1)])]) }).strict(),
-  z.object({ select: z.tuple([selector, z.string()]) }).strict(),
-  z.object({ scroll: selector }).strict(),
-  z.object({ waitFor: z.union([selector, z.object({ hidden: selector }).strict()]) }).strict(),
-  z.object({ wait: z.number().int().positive() }).strict(),
-  z.object({ evaluate: z.string().min(1) }).strict(),
-]);
+  press: z.union([z.string().min(1), z.tuple([selector, z.string().min(1)])]),
+  select: z.tuple([selector, z.string()]),
+  scroll: selector,
+  waitFor: z.union([selector, z.object({ hidden: selector }).strict()]),
+  wait: z.number().int().positive(),
+  evaluate: z.string().min(1),
+};
+
+type OneKey<V extends Record<string, z.ZodTypeAny>, T extends "input" | "output"> = {
+  [K in keyof V]: { [P in K]: T extends "input" ? z.input<V[K]> : z.output<V[K]> }
+}[keyof V];
+
+/** A step schema that dispatches on the step's single key. A z.union of
+ * one-key objects reports every alternative's failure when one step is wrong
+ * (hundreds of lines for one unset env var); dispatching reports only the
+ * named verb's issues, at that verb's path. */
+function oneKeyStep<V extends Record<string, z.ZodTypeAny>>(verbs: V) {
+  const names = Object.keys(verbs);
+  return z.unknown().transform((step, ctx) => {
+    const fail = (message: string) => {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      return z.NEVER;
+    };
+    if (typeof step !== "object" || step === null || Array.isArray(step)) {
+      return fail(`a step is an object with one key, e.g. { click: "#menu" }`);
+    }
+    const keys = Object.keys(step);
+    if (keys.length !== 1) return fail(`a step has exactly one key, got ${keys.join(", ") || "none"}`);
+    const verb = keys[0]!;
+    if (!Object.hasOwn(verbs, verb)) return fail(`unknown step "${verb}"; expected one of ${names.join(", ")}`);
+    const parsed = verbs[verb]!.safeParse((step as Record<string, unknown>)[verb]);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [verb, ...issue.path], message: issue.message });
+      }
+      return z.NEVER;
+    }
+    return { [verb]: parsed.data } as OneKey<V, "output">;
+  }) as unknown as z.ZodType<OneKey<V, "output">, z.ZodTypeDef, OneKey<V, "input">>;
+}
+
+export const StepSchema = oneKeyStep(stepVerbs);
 export type Step = z.infer<typeof StepSchema>;
 
 // `goto` is setup-only: a scenario is one page (its `path`) in one state.
-export const SetupStepSchema = z.union([StepSchema, z.object({ goto: z.string().min(1) }).strict()]);
+export const SetupStepSchema = oneKeyStep({ ...stepVerbs, goto: z.string().min(1) });
 export type SetupStep = z.infer<typeof SetupStepSchema>;
 
 /** A scenario target's recipe as stored on its baseline row. capture()
@@ -132,6 +168,16 @@ export const ConfigSchema = z.object({
     });
   }),
   setup: SetupSchema.optional(),
+}).superRefine((c, ctx) => {
+  // Jobs are scenario viewports ∩ top-level viewports; a scenario sharing no
+  // width with the top level would silently produce zero jobs.
+  c.scenarios.forEach((s, i) => {
+    const stray = (s.viewports ?? []).filter((w) => !c.viewports.includes(w)).sort((a, b) => a - b);
+    if (stray.length > 0) ctx.addIssue({
+      code: z.ZodIssueCode.custom, path: ["scenarios", i, "viewports"],
+      message: `scenario "${s.id}" viewports ${stray.join(", ")} are not in the top-level viewports (${c.viewports.join(", ")})`,
+    });
+  });
 });
 
 export type RawConfig = z.input<typeof ConfigSchema>;
