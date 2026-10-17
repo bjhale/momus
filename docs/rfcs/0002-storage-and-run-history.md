@@ -1,6 +1,6 @@
 # RFC-0002: Storage versioning and run history
 
-**Status:** Draft · **Milestone:** M1 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** M1 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -11,9 +11,9 @@ the correctness gaps in the baseline model.
 ## Motivation
 
 - **Approval needs history.** [RFC-0003](0003-approval-workflow.md) approves
-  captures *from a run*. Today each `run` truncates the only run.
+  captures _from a run_. Today each `run` truncates the only run.
 - **Migrations are ad hoc.** New tables appear through `CREATE TABLE IF NOT
-  EXISTS`, and one column was added with a guarded `ALTER TABLE`. That doesn't
+EXISTS`, and one column was added with a guarded `ALTER TABLE`. That doesn't
   scale to the key change in [RFC-0001](0001-targets.md), and it can't tell a
   user that a DB is from a newer momus.
 - **The baseline identity is incomplete.** The compatibility gate ignores
@@ -50,9 +50,16 @@ the correctness gaps in the baseline model.
 ### Run history
 
 - `runs` gets real ids. `run` inserts a new run; it no longer truncates.
-- A **retention** setting, `output.keepRuns` (default 20; 0 means unlimited),
+- A run's captures and diff images belong to that run alone. They are never
+  deduplicated by content hash or shared between runs, even when they are
+  byte-identical. A run's evidence never changes after it's written, and pruning
+  a run is a plain delete with no reference counting.
+- A **retention** setting, `output.keepRuns` (default 5; 0 means unlimited),
   prunes the oldest runs and their image BLOBs after each run, followed by an
-  incremental vacuum. Without this the file grows with every run.
+  incremental vacuum. Without this the file grows with every run. The default
+  is small because people commit the file to git. 5 gives approval
+  ([RFC-0003](0003-approval-workflow.md)) a few recent runs to pick from without
+  multiplying the file size by 20.
 - The report renders one run, the latest by default; `momus report --run ID`
   re-renders an older one.
 - Each run records its provenance: the momus version, engine and version, the
@@ -95,11 +102,8 @@ v0.9.x. Old DBs open and migrate; their baseline stays diffable.
 
 ## Open questions
 
-- Should image BLOBs be deduplicated by content hash? Unchanged pages make dev
-  captures identical across runs, so this could shrink history a lot. It is
-  cheap to add now and painful to add later.
-- Is `keepRuns: 20` right for a file people commit to git? Maybe the default
-  should be 1, to match today, with history as an opt-in.
+- None yet. Content-hash dedupe of BLOBs and the `keepRuns` default were
+  resolved on 2026-10-17: no dedupe, and a default of 5.
 
 ## Done when
 
