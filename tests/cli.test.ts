@@ -53,3 +53,16 @@ test("parses --allow-added and --allow-removed", () => {
   expect(p.overrides.allowRemoved).toBe(true);
   expect(parseCliArgs(["run"]).overrides.allowAdded).toBeUndefined();
 });
+
+test("parses report with --run", () => {
+  const p = parseCliArgs(["report", "--run", "3", "--out", "r.html"]);
+  expect(p.command).toBe("report");
+  expect(p.runId).toBe(3);
+  expect(p.overrides.out).toBe("r.html");
+  expect(parseCliArgs(["report"]).runId).toBeUndefined();
+});
+
+test("--run must be a positive integer", () => {
+  expect(() => parseCliArgs(["report", "--run", "abc"])).toThrow("--run");
+  expect(() => parseCliArgs(["report", "--run", "0"])).toThrow("--run");
+});

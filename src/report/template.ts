@@ -70,7 +70,7 @@ function changes(s: { added: number; removed: number }): string {
 
 export function renderReport(
   records: ComparisonRecord[],
-  meta: { dev: string; prod: string },
+  meta: { dev: string; prod: string; runId?: number; startedAt?: string },
   gate: GateOptions = STRICT_GATE,
 ): string {
   const sorted = [...records].sort((a, b) => rank(b) - rank(a));
@@ -87,6 +87,7 @@ export function renderReport(
 <header class="${s.verdict}">
   <div class="verdict">momus — ${s.verdict}</div>
   <div class="urls">${esc(meta.dev)} vs ${esc(meta.prod)}</div>
+  ${meta.runId !== undefined ? `<div class="run">run #${meta.runId}${meta.startedAt ? ` · ${esc(meta.startedAt)}` : ""}</div>` : ""}
   <div class="counts">${s.total} comparisons · ${s.passed} passed · ${s.failed} failed · ${s.errored} errored${changes(s)}</div>
   <div class="extras">${worst} · viewports: ${s.viewports.join(", ")}</div>
   <div class="filter">
@@ -106,7 +107,7 @@ const STYLES = `
   header .verdict { font-size: 1.25rem; font-weight: 700; }
   header.PASS .verdict { color: #3fb950; }
   header.FAIL .verdict { color: #f85149; }
-  header .urls, header .counts, header .extras { color: #9aa0a6; margin-top: .25rem; }
+  header .urls, header .run, header .counts, header .extras { color: #9aa0a6; margin-top: .25rem; }
   .filter { margin-top: .6rem; display: inline-flex; border: 1px solid #444; border-radius: .35rem; overflow: hidden; }
   .filter button { background: #1b1b1b; color: #ccc; border: 0; padding: .3rem .8rem; cursor: pointer; font: inherit; }
   .filter button + button { border-left: 1px solid #444; }

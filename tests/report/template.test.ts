@@ -121,3 +121,12 @@ test("a pages-only report's counts line is unchanged", () => {
   const html = renderReport(rows, { dev: "https://dev", prod: "https://prod" });
   expect(html).toContain("3 comparisons · 1 passed · 1 failed · 1 errored</div>");
 });
+
+test("the header names the run when given", () => {
+  const html = renderReport([], { dev: "d", prod: "p", runId: 12, startedAt: "2026-10-17T09:00:00Z" });
+  expect(html).toContain("run #12 · 2026-10-17T09:00:00Z");
+});
+
+test("no run line without a run id", () => {
+  expect(renderReport([], { dev: "d", prod: "p" })).not.toContain("run #");
+});

@@ -19,3 +19,25 @@ test("writeReport reads DB and writes an HTML file", async () => {
   expect(html).toContain("<title>momus report</title>");
   await Bun.file(out).delete();
 });
+
+test("writeReport uses the gate stored with the run, not the caller's", async () => {
+  const db = openDb(":memory:");
+  const runId = startRun(db, { devBaseUrl: "https://dev", prodBaseUrl: "https://prod", configJson: "{}", startedAt: "2026-10-17T09:00:00Z", allowAdded: true });
+  saveComparison(db, runId, { path: "/new", viewport: 1280, devUrl: "d", prodUrl: "p", status: "added", devImage: new Uint8Array([1]) });
+  finishRun(db, runId, "complete", "t2");
+  const out = `${import.meta.dir}/.tmp-report-gate.html`;
+  try {
+    await writeReport(db, runId, out);
+    const html = await Bun.file(out).text();
+    expect(html).toContain('<header class="PASS">');
+    expect(html).toContain(`run #${runId}`);
+    expect(html).toContain("2026-10-17T09:00:00Z");
+  } finally {
+    await Bun.file(out).delete().catch(() => {});
+  }
+});
+
+test("writeReport on a missing run throws", async () => {
+  const db = openDb(":memory:");
+  await expect(writeReport(db, 99, `${import.meta.dir}/.tmp-never.html`)).rejects.toThrow("run 99 not found");
+});

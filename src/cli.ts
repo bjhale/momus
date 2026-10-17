@@ -3,18 +3,20 @@ import { parseArgs } from "node:util";
 import type { CliOverrides } from "./config/load";
 
 export interface ParsedCli {
-  command: "run" | "snapshot" | "init" | "install-browser" | "help";
+  command: "run" | "snapshot" | "report" | "init" | "install-browser" | "help";
   overrides: CliOverrides;
   configPath?: string;
   /** `run --snapshot`: re-capture the prod baseline before diffing. Named
    * `forceSnapshot` internally so it never reads as the baseline row or the
    * `snapshot` command. */
   forceSnapshot?: boolean;
+  /** `report --run`: which stored run to render; default the latest. */
+  runId?: number;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
   const command = (argv[0] ?? "help") as ParsedCli["command"];
-  const known = new Set(["run", "snapshot", "init", "install-browser"]);
+  const known = new Set(["run", "snapshot", "report", "init", "install-browser"]);
   if (!known.has(command)) return { command: "help", overrides: {} };
 
   const { values } = parseArgs({
@@ -30,6 +32,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       insecure: { type: "boolean" },
       browser: { type: "string" },
       snapshot: { type: "boolean" },
+      run: { type: "string" },
       "allow-added": { type: "boolean" },
       "allow-removed": { type: "boolean" },
     },
@@ -48,7 +51,13 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   if (values["allow-added"]) overrides.allowAdded = true;
   if (values["allow-removed"]) overrides.allowRemoved = true;
 
-  return { command, overrides, configPath: values.config as string | undefined, forceSnapshot: values.snapshot as boolean | undefined };
+  let runId: number | undefined;
+  if (values.run !== undefined) {
+    runId = Number(values.run);
+    if (!Number.isInteger(runId) || runId < 1) throw new Error(`--run expects a positive run id, got "${values.run}"`);
+  }
+
+  return { command, overrides, configPath: values.config as string | undefined, forceSnapshot: values.snapshot as boolean | undefined, runId };
 }
 
 // --- Runtime dispatch (integration test covers it, not unit tests) ---
@@ -74,8 +83,12 @@ async function main(): Promise<void> {
         const { snapshotCommand } = await import("./commands/snapshot");
         process.exit(await snapshotCommand(parsed));
       }
+      case "report": {
+        const { reportCommand } = await import("./commands/report");
+        process.exit(await reportCommand(parsed));
+      }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus report [--run ID] [--out FILE] [--config FILE]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed]`);
         process.exit(0);
     }
   } catch (err) {
