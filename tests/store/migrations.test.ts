@@ -80,3 +80,30 @@ test("migrate refuses a version newer than the list it was given", () => {
   db.exec("PRAGMA user_version = 9;");
   expect(() => migrate(db, MIGRATIONS)).toThrow(DbTooNewError);
 });
+
+test("v3: run and baseline ids are never reused, even after deleting the newest", () => {
+  const db = openDb(":memory:");
+  db.exec(`INSERT INTO runs (started_at, dev_base_url, prod_base_url, config_json, status) VALUES ('s','d','p','{}','complete')`);
+  db.exec("DELETE FROM runs");
+  db.exec(`INSERT INTO runs (started_at, dev_base_url, prod_base_url, config_json, status) VALUES ('s','d','p','{}','complete')`);
+  expect((db.query("SELECT id FROM runs").get() as { id: number }).id).toBe(2);
+});
+
+test("v3: the file uses incremental auto-vacuum, fresh or migrated", () => {
+  const fresh = openDb(tmpFile("fresh.sqlite"));
+  expect((fresh.query("PRAGMA auto_vacuum").get() as { auto_vacuum: number }).auto_vacuum).toBe(2);
+});
+
+test("v3: a pre-v3 run keeps its id and reads with empty provenance", () => {
+  const file = tmpFile();
+  const raw = track(new Database(file, { create: true }));
+  migrate(raw, MIGRATIONS.slice(0, 2));
+  raw.exec(`INSERT INTO runs (id, started_at, dev_base_url, prod_base_url, config_json, status) VALUES (7,'s','d','p','{}','complete')`);
+  raw.close();
+  const db = openDb(file);
+  expect((db.query("PRAGMA auto_vacuum").get() as { auto_vacuum: number }).auto_vacuum).toBe(2);
+  const row = db.query("SELECT id, momus_version, allow_added FROM runs").get() as Record<string, unknown>;
+  expect(row).toEqual({ id: 7, momus_version: null, allow_added: null });
+  db.exec(`INSERT INTO runs (started_at, dev_base_url, prod_base_url, config_json, status) VALUES ('s','d','p','{}','complete')`);
+  expect((db.query("SELECT max(id) AS id FROM runs").get() as { id: number }).id).toBe(8);
+});

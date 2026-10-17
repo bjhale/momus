@@ -160,9 +160,60 @@ function v2(db: Database): void {
   }
 }
 
+// --- v3: run history (RFC-0002, ADR-0025). AUTOINCREMENT so a pruned id is
+// never handed out again: `report --run 3` and an approval's source run
+// (RFC-0003) must always mean the same run. SQLite can't add AUTOINCREMENT to
+// an existing table, so runs and snapshot are rebuilt (no BLOBs; cheap). The
+// build-new / drop-old / rename-new order matters: renaming the OLD table
+// would rewrite comparisons' REFERENCES runs(id) to point at it.
+function v3(db: Database): void {
+  db.exec(`CREATE TABLE runs_v3 (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at     TEXT NOT NULL,
+    finished_at    TEXT,
+    dev_base_url   TEXT NOT NULL,
+    prod_base_url  TEXT NOT NULL,
+    config_json    TEXT NOT NULL,
+    status         TEXT NOT NULL,
+    momus_version  TEXT,
+    engine         TEXT,
+    engine_version TEXT,
+    config_hash    TEXT,
+    baseline_id    INTEGER,
+    baseline_json  TEXT,
+    allow_added    INTEGER,
+    allow_removed  INTEGER,
+    ci_commit      TEXT,
+    ci_branch      TEXT,
+    ci_pr          TEXT
+  );`);
+  db.exec(`INSERT INTO runs_v3 (id, started_at, finished_at, dev_base_url, prod_base_url, config_json, status)
+    SELECT id, started_at, finished_at, dev_base_url, prod_base_url, config_json, status FROM runs;`);
+  db.exec("DROP TABLE runs;");
+  db.exec("ALTER TABLE runs_v3 RENAME TO runs;");
+
+  db.exec(`CREATE TABLE snapshot_v3 (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at     TEXT NOT NULL,
+    prod_base_url  TEXT NOT NULL,
+    viewports_json TEXT NOT NULL,
+    stabilize_json TEXT NOT NULL,
+    config_json    TEXT NOT NULL,
+    browser        TEXT
+  );`);
+  db.exec(`INSERT INTO snapshot_v3 SELECT id, created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser FROM snapshot;`);
+  db.exec("DROP TABLE snapshot;");
+  db.exec("ALTER TABLE snapshot_v3 RENAME TO snapshot;");
+
+  // The failScore that applied, per comparison: a re-rendered old run must
+  // reach the verdict it reached then, without today's config.
+  db.exec("ALTER TABLE comparisons ADD COLUMN fail_score REAL;");
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: v1 },
   { version: 2, up: v2, vacuum: true },
+  { version: 3, up: v3, vacuum: true },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
@@ -183,7 +234,11 @@ export function migrate(db: Database, migrations: readonly Migration[] = MIGRATI
   }
   // The .sqlite is the committed artifact: reclaim rebuilt tables' old pages
   // rather than ship the images twice.
-  if (vacuum) db.exec("VACUUM;");
+  if (vacuum) {
+    // Pruning runs relies on incremental_vacuum, which needs this mode.
+    db.exec("PRAGMA auto_vacuum = INCREMENTAL;");
+    db.exec("VACUUM;");
+  }
 }
 
 /** Refuse a newer DB before anything can write to it: even switching on WAL

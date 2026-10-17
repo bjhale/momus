@@ -2,7 +2,7 @@
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
 import { runFlow } from "../../src/pipeline/run-flow";
-import { openDb, readComparisons, readSnapshot, readBaselineImages } from "../../src/store/db";
+import { openDb, readComparisons, latestRunId, readSnapshot, readBaselineImages } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
 import type { Progress } from "../../src/progress";
@@ -35,7 +35,7 @@ test("no baseline: materializes one AND diffs in a single invocation", async () 
   expect(readSnapshot(db)!.prodBaseUrl).toBe("https://www.example.com");
   expect(readBaselineImages(db).length).toBe(2);
   // ...and comparisons produced in the same call, prod from the fresh baseline BLOB.
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, latestRunId(db)!);
   expect(rows.length).toBe(2);
   for (const r of rows) { expect(r.status).toBe("ok"); expect(Array.from(r.prodImage!)).toEqual(Array.from(png(100))); }
 });
@@ -59,7 +59,7 @@ test("second run freezes: no discovery, no prod re-capture, baseline reused", as
   });
 
   expect(res).toEqual({ ok: true, materialized: false, createdAt: "t1" });
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, latestRunId(db)!);
   expect(rows.length).toBe(1);
   expect(rows[0]!.status).toBe("ok");
   // prod still the frozen baseline (png 100); dev is the new capture (png 200).
@@ -96,7 +96,7 @@ test("forceSnapshot: re-materializes even when a baseline exists (re-discovers +
   // Baseline replaced: now 2 paths, snapshot re-dated, prod BLOB is the new png.
   expect(readBaselineImages(db).length).toBe(2);
   expect(readSnapshot(db)!.createdAt).toBe("t2");
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, latestRunId(db)!);
   expect(rows.length).toBe(2);
   for (const r of rows) expect(Array.from(r.prodImage!)).toEqual(Array.from(png(200)));
 });
@@ -158,7 +158,7 @@ test("a prod error row from materialize yields a prod: error comparison", async 
     diffPool,
   });
 
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, latestRunId(db)!);
   expect(rows[0]!.status).toBe("error");
   expect(rows[0]!.error).toContain("prod: 404");
 });
@@ -226,7 +226,7 @@ function scenarios(list: () => Promise<Target[]>): TargetSource {
   return { name: "scenarios", listForSnapshot: list, listLive: list };
 }
 const byId = (db: ReturnType<typeof openDb>) =>
-  Object.fromEntries(readComparisons(db, 1).map((r) => [r.targetId, r]));
+  Object.fromEntries(readComparisons(db, latestRunId(db)!).map((r) => [r.targetId, r]));
 
 test("frozen run: a urlList entry missing from the baseline is added; discovery never runs", async () => {
   const db = openDb(":memory:");
@@ -244,8 +244,8 @@ test("frozen run: a urlList entry missing from the baseline is added; discovery 
   expect(rows["/"]!.status).toBe("ok");
   expect(rows["/new"]!.status).toBe("added");
   expect(rows["/new"]!.devImage).toBeInstanceOf(Uint8Array);
-  expect(exitCodeFor(readComparisons(db, 1))).toBe(1);
-  expect(exitCodeFor(readComparisons(db, 1), { allowAdded: true, allowRemoved: false })).toBe(0);
+  expect(exitCodeFor(readComparisons(db, latestRunId(db)!))).toBe(1);
+  expect(exitCodeFor(readComparisons(db, latestRunId(db)!), { allowAdded: true, allowRemoved: false })).toBe(0);
 });
 
 test("a page dropped from the urlList is still compared, never removed", async () => {
@@ -312,7 +312,7 @@ test("an unreadable urlList on a frozen run is one pages source error", async ()
   await runFlow({ config, db, now: "t2", discover: async () => [],
     readUrlList: async () => { throw new Error("ENOENT: urls.txt"); },
     captureProd: prodOk, getDev: devOk, diffPool });
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, latestRunId(db)!);
   expect(rows.map((r) => [r.targetId, r.status])).toEqual([["source:pages", "error"]]);
 });
 

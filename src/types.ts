@@ -38,6 +38,9 @@ export interface ComparisonRecord {
   height?: number;
   diffPixels?: number;
   diffScore?: number;
+  /** The failScore that applied (after per-path overrides). Set on compared
+   * rows only; stored so an old run re-renders with its own gate. */
+  failScore?: number;
   passed?: boolean;
   status: ComparisonStatus;
   error?: string;
