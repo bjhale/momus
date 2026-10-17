@@ -1,7 +1,10 @@
 // src/capture/screenshot.ts
 import type { Browser, BrowserContext, Page } from "playwright-core";
-import { newContext } from "./browser";
+import { newContext, type StorageState } from "./browser";
+import { runSteps } from "./steps";
 import { disableAnimationsCss, maskCss } from "./stabilize";
+import { RecipeSchema, type CaptureRecipe } from "../config/schema";
+import type { Recipe } from "../targets/target";
 import type { CaptureResult } from "../types";
 
 export interface StabilizeOptions {
@@ -75,7 +78,31 @@ export async function autoScroll(page: Page, maxMs: number): Promise<void> {
   }, maxMs);
 }
 
-/** Capture a full-page PNG for one url at one viewport width. Never throws;
+/** Scope auth headers (e.g. CF-Access tokens) to same-origin requests only.
+ * Sending them cross-origin triggers CORS preflights on font CDNs that don't
+ * expect custom headers, silently blocking web font downloads. */
+export async function scopeRequestHeaders(page: Page, url: string, headers?: Record<string, string>): Promise<void> {
+  if (!headers || Object.keys(headers).length === 0) return;
+  const pageOrigin = new URL(url).origin;
+  await page.route("**/*", (route, request) => {
+    if (new URL(request.url()).origin === pageOrigin) {
+      route.continue({ headers: { ...request.headers(), ...headers } });
+    } else {
+      route.continue();
+    }
+  });
+}
+
+export interface CaptureExtras {
+  /** A target's recipe (RFC-0004). Validated here, so a malformed stored
+   * recipe becomes an error row instead of a throw. */
+  recipe?: Recipe;
+  /** The side's session from setup, loaded into the context. */
+  storageState?: StorageState;
+}
+
+/** Capture a PNG for one url at one viewport width: the full page, or with an
+ * optional recipe, its steps run first and `capture.element` screenshotted. Never throws;
  * returns { ok:false, error } on failure so one bad page can't abort a run. */
 export async function capture(
   browser: Browser,
@@ -84,7 +111,14 @@ export async function capture(
   opts: StabilizeOptions,
   insecure = false,
   requestHeaders?: Record<string, string>,
+  extras: CaptureExtras = {},
 ): Promise<CaptureResult> {
+  let recipe: CaptureRecipe | undefined;
+  if (extras.recipe !== undefined) {
+    const parsed = RecipeSchema.safeParse(extras.recipe);
+    if (!parsed.success) return { ok: false, error: `invalid recipe: ${parsed.error.issues[0]?.message ?? "unknown"}` };
+    recipe = parsed.data;
+  }
   // Single shared deadline so nav + settle together honor one `timeoutMs` cap
   // (spec §6), rather than allowing up to 2× the configured budget.
   const deadline = Date.now() + opts.timeoutMs;
@@ -93,21 +127,9 @@ export async function capture(
   // { ok:false } rather than throwing (upholds "one bad page can't abort a run").
   let context: BrowserContext | undefined;
   try {
-    context = await newContext(browser, viewportWidth, insecure);
+    context = await newContext(browser, viewportWidth, insecure, extras.storageState);
     const page = await context.newPage();
-    // Scope auth headers (e.g. CF-Access tokens) to same-origin requests only.
-    // Sending them cross-origin triggers CORS preflights on font CDNs that
-    // don't expect custom headers, silently blocking web font downloads.
-    if (requestHeaders && Object.keys(requestHeaders).length > 0) {
-      const pageOrigin = new URL(url).origin;
-      await page.route("**/*", (route, request) => {
-        if (new URL(request.url()).origin === pageOrigin) {
-          route.continue({ headers: { ...request.headers(), ...requestHeaders } });
-        } else {
-          route.continue();
-        }
-      });
-    }
+    await scopeRequestHeaders(page, url, requestHeaders);
     // Hard navigation: a genuine load failure (DNS, connection refused, nav
     // timeout) throws here and is recorded as an error (spec §7).
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
@@ -154,13 +176,22 @@ export async function capture(
       ]);
     }
 
-    const css = [
-      opts.disableAnimations ? disableAnimationsCss() : "",
-      maskCss(opts.mask),
-    ].filter(Boolean).join("\n");
-    if (css) await page.addStyleTag({ content: css });
+    // Animations off before steps, so a transition a step triggers ends at
+    // once; mask and remove after them, so steps can reach anything and
+    // whatever they reveal is still masked (ADR-0029).
+    if (opts.disableAnimations) await page.addStyleTag({ content: disableAnimationsCss() });
+    if (recipe) await runSteps(page, recipe.steps, { timeoutMs: opts.timeoutMs });
+    const mask = maskCss(opts.mask);
+    if (mask) await page.addStyleTag({ content: mask });
     await removeSelectors(page, opts.remove);
     if (opts.settleMs > 0) await page.waitForTimeout(opts.settleMs);
+    if (recipe?.capture) {
+      const el = page.locator(recipe.capture.element).first();
+      if ((await el.count()) === 0) {
+        return { ok: false, error: `capture.element ${JSON.stringify(recipe.capture.element)} matched nothing` };
+      }
+      return { ok: true, png: new Uint8Array(await el.screenshot({ type: "png", timeout: opts.timeoutMs })) };
+    }
     const png = await page.screenshot({ fullPage: true, type: "png" });
     return { ok: true, png: new Uint8Array(png) };
   } catch (err) {

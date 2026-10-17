@@ -25,12 +25,16 @@ export async function launchBrowser(engine: BrowserEngine = "chromium"): Promise
   return ENGINES[engine].launch({ headless: true });
 }
 
+/** A logged-in session from setup (RFC-0004), held in memory only. */
+export type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
+
 export async function newContext(
-  browser: Browser, viewportWidth: number, ignoreHTTPSErrors = false,
+  browser: Browser, viewportWidth: number, ignoreHTTPSErrors = false, storageState?: StorageState,
 ): Promise<BrowserContext> {
   return browser.newContext({
     viewport: { width: viewportWidth, height: 900 },
     deviceScaleFactor: 1,
     ignoreHTTPSErrors,
+    storageState,
   });
 }
