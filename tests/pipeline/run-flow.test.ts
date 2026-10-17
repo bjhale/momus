@@ -102,7 +102,7 @@ test("forceSnapshot: re-materializes even when a baseline exists (re-discovers +
   for (const r of rows) expect(Array.from(r.prodImage!)).toEqual(Array.from(png(200)));
 });
 
-test("run row records the baseline's prod URL, not the live config prod", async () => {
+test("a live prod on another origin (config or --prod) conflicts instead of diffing", async () => {
   const db = openDb(":memory:");
   await runFlow({
     config: cfg({ prod: "https://frozen.example.com" }), db, now: "t1",
@@ -111,18 +111,57 @@ test("run row records the baseline's prod URL, not the live config prod", async 
     getDev: async () => ({ ok: true, png: png(150) }),
     diffPool,
   });
-
+  let devCalls = 0;
   const res = await runFlow({
     config: cfg({ prod: "https://live-different.example.com" }), db, now: "t2",
+    discover: async () => { throw new Error("frozen"); },
+    captureProd: async () => { throw new Error("frozen"); },
+    getDev: async () => { devCalls++; return { ok: true, png: png(150) }; },
+    diffPool,
+  });
+  expect(res.ok).toBe(false);
+  if (!res.ok) expect(res.conflict).toContain("prod origin differs");
+  expect(devCalls).toBe(0);
+});
+
+test("run row records the baseline's prod URL when the live prod is the same origin", async () => {
+  const db = openDb(":memory:");
+  await runFlow({
+    config: cfg({ prod: "https://frozen.example.com" }), db, now: "t1",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+  const res = await runFlow({
+    config: cfg({ prod: "https://frozen.example.com/" }), db, now: "t2",
     discover: async () => { throw new Error("frozen"); },
     captureProd: async () => { throw new Error("frozen"); },
     getDev: async () => ({ ok: true, png: png(150) }),
     diffPool,
   });
+  if (!res.ok) throw new Error(res.conflict);
+  expect(readRun(db, res.runId)!.prodBaseUrl).toBe("https://frozen.example.com");
+});
 
+test("--snapshot with a new prod origin re-materializes instead of conflicting", async () => {
+  const db = openDb(":memory:");
+  await runFlow({
+    config: cfg({ prod: "https://one.example.com" }), db, now: "t1",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+  const res = await runFlow({
+    config: cfg({ prod: "https://two.example.com" }), db, now: "t2", forceSnapshot: true,
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
   expect(res.ok).toBe(true);
-  const row = db.query("SELECT prod_base_url FROM runs WHERE id = 1").get() as { prod_base_url: string };
-  expect(row.prod_base_url).toBe("https://frozen.example.com");
+  expect(readSnapshot(db)!.prodBaseUrl).toBe("https://two.example.com");
 });
 
 test("conflict on changed viewports returns ok:false and skips the diff", async () => {

@@ -2,11 +2,22 @@
 import type { ResolvedConfig } from "../config/schema";
 import type { SnapshotMeta } from "../store/db";
 
-/** A prod baseline is only diff-able against dev when dev is captured with the
- * same viewports and stabilize settings. Returns a reason string on mismatch,
+/** A prod baseline is only diff-able against dev when it was captured from the
+ * same prod origin, and dev is captured with the same viewports and stabilize
+ * settings. Returns a reason string on mismatch,
  * or null when the live config is compatible with the baseline. Compared
  * field-by-field so SQLite/JSON key ordering can never cause a false mismatch. */
 export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta): string | null {
+  // A baseline from another site makes every diff meaningless while looking
+  // clean. This also covers `run --prod`, which overrides config.prod
+  // (ADR-0026). Origins, not full URLs: a trailing slash isn't another site.
+  const co = origin(config.prod), so = origin(snapshot.prodBaseUrl);
+  if (co !== so) {
+    return `prod origin differs: config "${co}" vs baseline "${so}". ` +
+      "Re-capture the baseline with `momus run --snapshot` (or `momus snapshot`), " +
+      "or point output.db at a separate file for this site.";
+  }
+
   if (config.browser !== (snapshot.browser ?? "chromium")) {
     return `browser differs: config "${config.browser}" vs baseline "${snapshot.browser ?? "chromium"}"`;
   }
@@ -38,4 +49,8 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta)
   }
 
   return null;
+}
+
+function origin(url: string): string {
+  try { return new URL(url).origin; } catch { return url; }
 }

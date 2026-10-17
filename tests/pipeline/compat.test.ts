@@ -71,3 +71,22 @@ test("a baseline snapshot missing 'remove' does not conflict with a default (emp
   delete (snap.stabilize as { remove?: string[] }).remove;
   expect(baselineConflict(c, snap)).toBeNull();
 });
+
+test("a different prod origin → conflict naming both origins and the fix", () => {
+  const msg = baselineConflict(cfg({ prod: "https://other.example.com" }), snapFrom(cfg()));
+  expect(msg).toContain('prod origin differs: config "https://other.example.com" vs baseline "https://www.example.com"');
+  expect(msg).toContain("--snapshot");
+  expect(msg).toContain("output.db");
+});
+
+test("same origin with a different path or trailing slash → no conflict", () => {
+  const snap = snapFrom(cfg());
+  expect(baselineConflict(cfg({ prod: "https://www.example.com/" }), snap)).toBeNull();
+  expect(baselineConflict(cfg({ prod: "https://www.example.com/en/" }), snap)).toBeNull();
+});
+
+test("a different port or scheme is a different origin", () => {
+  const snap = snapFrom(cfg());
+  expect(baselineConflict(cfg({ prod: "http://www.example.com" }), snap)).toContain("prod origin differs");
+  expect(baselineConflict(cfg({ prod: "https://www.example.com:8443" }), snap)).toContain("prod origin differs");
+});
