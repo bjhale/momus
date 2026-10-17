@@ -44,3 +44,27 @@ test("itemClass maps status/passed", () => {
   expect(itemClass(ok("/a", 1280, 0.1, false))).toBe("fail");
   expect(itemClass(err("/a", 1280))).toBe("error");
 });
+
+const one = (status: "added" | "removed") =>
+  ({ targetId: "/n", label: "/n", path: "/n", viewport: 1280, devUrl: "", prodUrl: "", status });
+
+test("added and removed are counted and fail the verdict by default", () => {
+  const s = summarize([one("added"), one("removed")]);
+  expect([s.added, s.removed, s.passed, s.failed, s.errored]).toEqual([1, 1, 0, 0, 0]);
+  expect(s.verdict).toBe("FAIL");
+});
+
+test("allowed added/removed leave the verdict PASS", () => {
+  expect(summarize([one("added"), one("removed")], { allowAdded: true, allowRemoved: true }).verdict).toBe("PASS");
+});
+
+test("itemClass names added and removed", () => {
+  expect(itemClass(one("added"))).toBe("added");
+  expect(itemClass(one("removed"))).toBe("removed");
+});
+
+test("worst shows the target label", () => {
+  const s = summarize([{ targetId: "scenarios:a", label: "Menu open", path: "/", viewport: 375,
+    devUrl: "", prodUrl: "", status: "ok", passed: false, diffScore: 0.3 }]);
+  expect(s.worst!.path).toBe("Menu open");
+});
