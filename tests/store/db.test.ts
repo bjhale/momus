@@ -6,7 +6,7 @@ import { openDb, startRun, saveComparison, finishRun, readComparisons } from "..
 import type { ComparisonRecord } from "../../src/types";
 import {
   writeSnapshot, readSnapshot, saveBaselineImage, readBaselineImages,
-  clearBaseline, clearRuns,
+  clearBaseline, clearRuns, type BaselineImageRow,
 } from "../../src/store/db";
 
 const STAB = {
@@ -203,4 +203,39 @@ test("clearRuns empties runs and comparisons only", () => {
   clearRuns(db);
   expect((db.query("SELECT COUNT(*) AS n FROM runs").get() as { n: number }).n).toBe(0);
   expect(readSnapshot(db)).not.toBeNull(); // baseline untouched
+});
+
+test("comparison identity round-trips; omitted identity defaults to a page", () => {
+  const db = openDb(":memory:");
+  const runId = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "t" });
+  saveComparison(db, runId, { path: "/a", viewport: 1280, devUrl: "d", prodUrl: "p", status: "ok" });
+  saveComparison(db, runId, {
+    targetId: "scenarios:nav", source: "scenarios", label: "Nav open",
+    path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", status: "added",
+  });
+  const rows = readComparisons(db, runId);
+  const page = rows.find((r) => r.path === "/a")!;
+  expect([page.targetId, page.source, page.label]).toEqual(["/a", "pages", "/a"]);
+  const sc = rows.find((r) => r.targetId === "scenarios:nav")!;
+  expect([sc.source, sc.label, sc.status]).toEqual(["scenarios", "Nav open", "added"]);
+});
+
+test("two targets sharing a path are distinct comparison rows", () => {
+  const db = openDb(":memory:");
+  const runId = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "t" });
+  saveComparison(db, runId, { path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", status: "ok" });
+  saveComparison(db, runId, { targetId: "scenarios:nav", source: "scenarios", label: "Nav", path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", status: "ok" });
+  expect(readComparisons(db, runId).length).toBe(2);
+});
+
+test("baseline identity and recipe round-trip; omitted identity defaults to a page", () => {
+  const db = openDb(":memory:");
+  saveBaselineImage(db, { path: "/", viewport: 1280, prodUrl: "u", status: "ok" });
+  saveBaselineImage(db, {
+    targetId: "scenarios:nav", source: "scenarios", label: "Nav", recipeJson: '{"a":1}',
+    path: "/", viewport: 1280, prodUrl: "u", status: "ok",
+  });
+  const [page, sc] = readBaselineImages(db) as [BaselineImageRow, BaselineImageRow]; // ordered by target_id: "/" < "scenarios:nav"
+  expect([page.targetId, page.source, page.label, page.recipeJson]).toEqual(["/", "pages", "/", null]);
+  expect([sc.targetId, sc.source, sc.label, sc.recipeJson]).toEqual(["scenarios:nav", "scenarios", "Nav", '{"a":1}']);
 });

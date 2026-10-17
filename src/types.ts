@@ -1,4 +1,5 @@
 // src/types.ts
+import type { TargetSourceName } from "./targets/target";
 
 /** Raw PNG capture for one side of a comparison. */
 export interface CaptureResult {
@@ -16,8 +17,16 @@ export interface DiffResult {
   diffPng: Uint8Array;
 }
 
+/** `added`/`removed`: the target is in only one of the live list and the
+ * baseline (RFC-0001, ADR-0022). Never an error; never a silent pass. */
+export type ComparisonStatus = "ok" | "error" | "added" | "removed";
+
 /** A fully processed comparison ready to persist. */
 export interface ComparisonRecord {
+  /** Target identity. Omitted fields mean a page: id = label = path, source = pages. */
+  targetId?: string;
+  source?: TargetSourceName;
+  label?: string;
   path: string;
   viewport: number;
   devUrl: string;
@@ -30,6 +39,6 @@ export interface ComparisonRecord {
   diffPixels?: number;
   diffScore?: number;
   passed?: boolean;
-  status: "ok" | "error";
+  status: ComparisonStatus;
   error?: string;
 }
