@@ -417,7 +417,7 @@ header. That shows up as a diff. Use `mask` for it.
 | --- | --- |
 | `0` | All pages captured and passed the diff gate. |
 | `1` | At least one page failed the gate, errored, or is **added**/**removed** (unless allowed). A report is still written. |
-| `2` | Operational error that prevented the run: missing browser, bad config, a baseline conflict (different prod origin, browser, viewports or stabilize), a DB written by a newer momus, every prod capture failing, a failed `setup` login, or another unrecoverable failure. |
+| `2` | Operational error that prevented the run: missing browser, bad config, a baseline conflict (different prod origin, browser, viewports, stabilize or prod setup), a DB written by a newer momus, every prod capture failing, a failed `setup` login, or another unrecoverable failure. |
 
 ## How it works
 

@@ -167,7 +167,7 @@ None.
 
 ## Done when
 
-- [x] Scenarios with the full step vocabulary work on all three engines.
+- [ ] Scenarios with the full step vocabulary work on all three engines (chromium and firefox verified; the WebKit tests are written and run via `bun run test:engines`, but haven't run yet on a host with WebKit's system libraries).
 - [x] Element capture works, and a missing element errors per target.
 - [x] Setup logs in once per side; a setup failure exits 2 with the side and
       failing step named.
@@ -190,3 +190,6 @@ None.
 - `press` takes a key (on the page) or `[selector, key]`.
 - Selectors act on the **first** match, `capture.element` included.
 - Steps and the element screenshot each get their own `stabilize.timeoutMs`.
+- WebKit verification is outstanding: the WebKit tests are written and run via
+  `bun run test:engines`, but haven't run yet on a host with WebKit's system
+  libraries.
