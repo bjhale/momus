@@ -33,7 +33,7 @@ will build on momus once they can rely on it.
 | **Config schema** | A valid 1.0 config stays valid and behaves the same. New fields are optional with defaults. |
 | **CLI** | Commands, flags, and their meanings are stable. Exit codes 0, 1 and 2 keep the meanings in [ADR-0006](../adr/0006-errors-are-rows.md). |
 | **`.sqlite` format** | Every 1.x release opens, migrates, and diffs against a baseline written by any earlier 1.x release ([RFC-0002](0002-storage-and-run-history.md)). |
-| **JSON results / approval list** | Versioned schemas ([RFC-0008](0008-cli-ci-integration.md), [RFC-0007](0007-review-report.md)). Fields are only added within a major version. |
+| **JSON results** | A versioned schema ([RFC-0008](0008-cli-ci-integration.md)). Fields are only added within a major version. |
 | **Programmatic API** | Whatever `src/index.ts` exports at 1.0. |
 | **Docker image** | The entrypoint, the `/work` mount, and tags `:1`, `:1.x`, `:1.x.y`. |
 

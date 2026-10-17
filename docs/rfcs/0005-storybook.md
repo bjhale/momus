@@ -1,6 +1,15 @@
 # RFC-0005: Storybook stories as targets
 
-**Status:** Draft · **Milestone:** M4 · **Created:** 2026-10-16
+**Status:** Withdrawn · **Milestone:** ~~M4~~ · **Created:** 2026-10-16
+
+> **Withdrawn 2026-10-17.** momus won't add anything Storybook-specific: no
+> `storybook` source, no `index.json` discovery, no `parameters.momus`. A
+> story's iframe URL (`/iframe.html?id=<id>&viewMode=story`) can be listed in
+> `urlList` like any page, since query strings are kept
+> ([ADR-0014](../adr/0014-urllist-normalized-to-paths.md)). Element capture
+> and setup steps come from [RFC-0004](0004-scripted-interactions.md) and apply
+> to stories the same way. The text below is kept as the record of what was
+> proposed.
 
 ## Summary
 
@@ -27,7 +36,7 @@ each one with its raw URL.
 ```ts
 storybook: {
   dev: "http://localhost:6006",          // or a static build directory
-  prod: "https://storybook.example.com", // optional with baseline.source: "approved"
+  prod: "./storybook-static-main",       // or a deployed main-branch Storybook
   include: ["components-*"],              // story-id globs
   exclude: ["*--playground"],
 },
@@ -45,9 +54,10 @@ storybook: {
 - **Per-story parameters:** read a `momus` key from story `parameters`
   (`{ skip, viewports, mask, steps, delayMs }`). Settings stay next to the
   component instead of in one central config.
-- **Approved baselines:** most teams have no "prod Storybook," so this RFC
-  assumes [RFC-0003](0003-approval-workflow.md)'s `baseline.source: "approved"`
-  as the common mode.
+- **The baseline is a main-branch build.** Most teams have no "prod
+  Storybook." In 1.x the baseline is always a snapshot of `prod`
+  ([ADR-0028](../adr/0028-approval-belongs-to-the-server.md)), so `prod` points at a Storybook built from the default
+  branch: a static build directory or a deployed one.
 
 ## Non-goals
 
@@ -79,4 +89,4 @@ per-target compatibility gate ([RFC-0001](0001-targets.md)).
       directory.
 - [ ] Story id globs and `parameters.momus` work.
 - [ ] e2e against a checked-in minimal Storybook static build fixture.
-- [ ] A documented recipe for "Storybook in CI with approved baselines."
+- [ ] A documented recipe for "Storybook in CI against a main-branch build."

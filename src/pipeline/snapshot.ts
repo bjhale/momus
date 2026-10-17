@@ -14,7 +14,7 @@ export interface SnapshotPipelineArgs {
   createdAt: string;
   /** Pages discovery: the `pages` source, which every project has. */
   discover: () => Promise<string[]>;
-  /** Sources beyond pages. None ship yet (RFC-0004 scenarios, RFC-0005 storybook). */
+  /** Sources beyond pages. None ship yet (RFC-0004 scenarios). */
   sources?: TargetSource[];
   captureFn: (url: string, viewport: number, cfg: ResolvedConfig) => Promise<CaptureResult>;
   progress?: Progress;

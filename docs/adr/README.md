@@ -39,6 +39,7 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0025](0025-run-history.md) | Run history: inserted runs, never-reused ids, `keepRuns` retention | 2026-10-17 |
 | [0026](0026-prod-origin-in-the-gate.md) | The prod origin joins the compatibility gate | 2026-10-17 |
 | [0027](0027-atomic-baseline-replacement.md) | A baseline is replaced atomically; an all-error capture doesn't freeze | 2026-10-17 |
+| [0028](0028-approval-belongs-to-the-server.md) | Approval belongs to the server, not 1.x | 2026-10-17 |
 
 ## Open questions
 

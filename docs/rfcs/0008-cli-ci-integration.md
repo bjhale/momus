@@ -54,8 +54,8 @@ Read the commit, branch, PR number, and CI run URL from flags
 - uploads the report as an artifact,
 - writes the step summary, and optionally posts or updates a single PR comment.
 
-Documented recipes cover "nightly prod snapshot plus a PR diff," "Storybook
-with approved baselines," and GitLab CI.
+Documented recipes cover "nightly prod snapshot plus a PR diff" and GitLab
+CI.
 
 ### Sharding
 

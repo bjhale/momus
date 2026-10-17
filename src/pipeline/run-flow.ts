@@ -18,7 +18,7 @@ export interface RunFlowArgs {
   now: string;
   /** Discover prod paths — only called when a baseline must be materialized. */
   discover: () => Promise<string[]>;
-  /** Sources beyond pages. None ship yet (RFC-0004 scenarios, RFC-0005 storybook). */
+  /** Sources beyond pages. None ship yet (RFC-0004 scenarios). */
   sources?: TargetSource[];
   /** Read the urlList file; injectable for tests. A run re-reads it so new
    * entries show as `added` (ADR-0022). */

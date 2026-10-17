@@ -5,15 +5,13 @@
 ## Summary
 
 Turn the report from a document you read into a tool you review with. It gets
-comparison modes beyond side by side, keyboard-driven triage, and an approval
-list the CLI can apply. It stays one self-contained file you can open anywhere.
+comparison modes beyond side by side and keyboard-driven triage. It stays one
+self-contained file you can open anywhere.
 
 ## Motivation
 
 Reviewing 200 comparisons in a list of accordions is slow, and the triptych
-makes subtle shifts hard to spot. Reviewing is also where the approval workflow
-([RFC-0003](0003-approval-workflow.md)) begins: the person looking at the diff
-is the person deciding whether to approve it.
+makes subtle shifts hard to spot.
 
 ## Today
 
@@ -36,25 +34,10 @@ is the person deciding whether to approve it.
 
 ### Triage
 
-- Keyboard navigation: next or previous comparison, toggle mode,
-  mark approve or reject.
+- Keyboard navigation: next or previous comparison, toggle mode.
 - Filters: status (failed, errored, added, removed, unstable, passed), source,
   viewport, and path search.
 - Group by target, showing every viewport of a target together.
-
-### Approvals out of a static file
-
-A static file can't write to the `.sqlite`. Marking comparisons builds an
-**approval list**, which the reviewer copies or saves as a small JSON file, and
-the CLI applies it:
-
-```text
-momus approve --from approvals.json
-```
-
-The list names the run id and each `(target, viewport)`, and the CLI refuses a
-list from a different run. Downloads are sometimes blocked, for example in
-sandboxed viewers, so copy to clipboard is the primary path.
 
 ### Size
 
@@ -72,12 +55,12 @@ Downscaling is for *display* only; diffs are never computed on scaled images
 - A served or live report. Serving is the 2.0 server's review UI
   ([RFC-0010](0010-server.md)).
 - Comments or discussion threads.
+- Approving or rejecting changes. Approval moves to the 2.0 server
+  ([ADR-0028](../adr/0028-approval-belongs-to-the-server.md)); the report's triage is its read-only precursor.
 
 ## Compatibility
 
-The report isn't a stable format; its HTML can change in any release. The
-approval-list JSON *is* part of the contract and is versioned
-([RFC-0009](0009-stability-contract.md)).
+The report isn't a stable format; its HTML can change in any release.
 
 ## Open questions
 
@@ -91,8 +74,7 @@ approval-list JSON *is* part of the contract and is versioned
 
 - [ ] Slider, onion skin, highlight and zoom work on Chromium, Firefox and
       WebKit-based browsers.
-- [ ] Keyboard triage plus an approval list round-trips through
-      `momus approve --from`.
+- [ ] Keyboard triage and filters work without a mouse.
 - [ ] `--report-images` modes work; a 500-target report in `thumbnails` mode
       opens in under 2 s.
 - [ ] An ADR supersedes or amends ADR-0017.

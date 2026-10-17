@@ -1,6 +1,15 @@
 # RFC-0003: Approved baselines and the approval workflow
 
-**Status:** Draft · **Milestone:** M2 · **Created:** 2026-10-16
+**Status:** Withdrawn · **Milestone:** ~~M2~~ · **Created:** 2026-10-16
+
+> **Withdrawn 2026-10-17.** Approval moves to the 2.0 server
+> ([RFC-0010](0010-server.md)); see
+> [ADR-0028](../adr/0028-approval-belongs-to-the-server.md). Its hardest
+> questions — which copy of the baseline is the source of truth, who approved
+> what, and how approvals on a branch reach main — are the ones the server
+> exists to answer. A single-user CLI answer would be frozen into the 1.0
+> contract ([RFC-0009](0009-stability-contract.md)) and then constrain the
+> server. The text below is kept as the record of what was proposed.
 
 ## Summary
 

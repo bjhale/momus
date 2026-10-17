@@ -197,3 +197,12 @@ the baseline: `scenarios` (the config) and `storybook` (`index.json`).
     entry within the cap that the baseline lacks is `added`.
   - Resolving `added`/`removed` by approval ships with
     [RFC-0003](0003-approval-workflow.md); until then, re-snapshot or allow them.
+- **2026-10-17: approval withdrawn from 1.x.** RFC-0003 was withdrawn and
+  approval moved to the 2.0 server
+  ([ADR-0028](../adr/0028-approval-belongs-to-the-server.md)). In 1.x, `added` and `removed`
+  are resolved only by re-snapshotting or by `--allow-added`/`--allow-removed`,
+  and a page leaves the baseline only at the next snapshot (there is no
+  `momus baseline drop`).
+- **2026-10-17: no `storybook` source.** [RFC-0005](0005-storybook.md) was
+  withdrawn, so `source` is `"pages" | "scenarios"`. Story iframe URLs are
+  listed in `urlList` as pages. Only `scenarios` can now report `removed`.

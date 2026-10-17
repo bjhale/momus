@@ -5,14 +5,14 @@
 momus aims to be a world-class open-source visual regression system. It gets
 there in two stages:
 
-1. **1.x: a CLI developers reach for first.** Point it at a site, a set of
-   scripted scenarios, or a Storybook. It captures deterministically, diffs
-   honestly, lets you review and approve changes, and gates CI. All of it works
-   with nothing but the Docker image and a `.sqlite` file.
+1. **1.x: a CLI developers reach for first.** Point it at a site or a set of
+   scripted scenarios. It captures deterministically, diffs
+   honestly, lets you review changes, and gates CI. All of it works with
+   nothing but the Docker image and a `.sqlite` file.
 2. **2.x: a server that remembers.** The same CLI uploads its results to a
    self-hostable service. The service tracks history over time, holds a
-   baseline per branch, gives a team one place to review, and posts status
-   checks back to pull requests.
+   baseline per branch, gives a team one place to review and approve changes,
+   and posts status checks back to pull requests.
 
 The CLI is not a thin client for the server, and 1.x is not a demo for 2.x. A
 team that never runs the server should still have a complete tool.
@@ -21,7 +21,8 @@ team that never runs the server should still have a complete tool.
 
 1.0 is a **feature bar** and a **frozen contract**. Both are required:
 
-- **Feature bar.** Every milestone below, M1 through M6, has shipped.
+- **Feature bar.** Every milestone below, M1 through M6 except the withdrawn
+  M2 and M4, has shipped.
 - **Contract.** The config schema, CLI commands and flags, exit codes, the
   `.sqlite` format, and the programmatic API are covered by semver. A 1.x
   release never breaks a config file, a CI script, or a stored baseline. See
@@ -35,23 +36,31 @@ break things, and the changelog says so when they do.
 | Milestone | Theme | RFCs | Status |
 | --- | --- | --- | --- |
 | **M1** Foundations | Close the known correctness gaps. Keep run history. Version the DB. Generalize "page path" into a *target*. | [0001](docs/rfcs/0001-targets.md), [0002](docs/rfcs/0002-storage-and-run-history.md) | In progress |
-| **M2** Approved baselines | Approve or reject changes; approved captures become the baseline. | [0003](docs/rfcs/0003-approval-workflow.md) | Not started |
+| ~~**M2** Approved baselines~~ | Moved to 2.0 ([ADR-0028](docs/adr/0028-approval-belongs-to-the-server.md)). | [0003](docs/rfcs/0003-approval-workflow.md) | Withdrawn |
 | **M3** Interactions & auth | Per-target steps, element screenshots, and a login/setup phase. | [0004](docs/rfcs/0004-scripted-interactions.md) | Not started |
-| **M4** Components | Storybook stories as targets. | [0005](docs/rfcs/0005-storybook.md) | Not started |
+| ~~**M4** Components~~ | No Storybook-specific support; stories are listed as pages. | [0005](docs/rfcs/0005-storybook.md) | Withdrawn |
 | **M5** Signal quality | Fewer false diffs; honest reporting of the ones that remain. | [0006](docs/rfcs/0006-capture-determinism-and-diff-quality.md) | Not started |
-| **M6** Review & CI ergonomics | Report v2 with review and approval; machine-readable output; a GitHub Action. | [0007](docs/rfcs/0007-review-report.md), [0008](docs/rfcs/0008-cli-ci-integration.md) | Not started |
+| **M6** Review & CI ergonomics | Report v2 for review and triage; machine-readable output; a GitHub Action. | [0007](docs/rfcs/0007-review-report.md), [0008](docs/rfcs/0008-cli-ci-integration.md) | Not started |
 | **1.0** | Freeze the contract. | [0009](docs/rfcs/0009-stability-contract.md) | Not started |
 
 ### Ordering
 
-M1 comes first because the rest depend on it. Approval (M2) needs run history to
-approve *from*. Interactions (M3) and Storybook (M4) are new kinds of target, and
-M1's target abstraction is what lets them in without forking the pipeline.
+M1 comes first because the rest depend on it. Interactions (M3) are a new kind
+of target, and M1's target abstraction is what lets them in without forking the
+pipeline.
 
-After M1, milestones M2 to M5 are largely independent and can overlap. M6
-depends on M2, since approving from the report needs the approval model. 1.0
+After M1, milestones M3, M5 and M6 are largely independent and can overlap. 1.0
 comes last because a contract shouldn't be frozen while features are still
 reshaping it.
+
+M2, approved baselines, was withdrawn and moved to the server
+([ADR-0028](docs/adr/0028-approval-belongs-to-the-server.md)). In 1.x the
+baseline is always a prod snapshot. An intended change is accepted by
+re-snapshotting prod, or tolerated with `--allow-added` and `--allow-removed`.
+
+M4, Storybook stories as targets, was withdrawn: momus has no
+Storybook-specific support, and a story's iframe URL goes in `urlList` like any
+other page ([RFC-0005](docs/rfcs/0005-storybook.md)).
 
 ### M1 also fixes the known gaps
 
@@ -80,6 +89,8 @@ In outline:
 
 - The CLI gains `momus upload`, sending a run to the server.
 - History and trends per target over time.
+- Approving and rejecting changes, so approved captures become the baseline
+  (formerly M2, [RFC-0003](docs/rfcs/0003-approval-workflow.md)).
 - A baseline per branch, inherited from the default branch.
 - A review UI the whole team shares.
 - Status checks and PR comments on GitHub and GitLab.
