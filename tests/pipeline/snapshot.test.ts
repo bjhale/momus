@@ -195,3 +195,29 @@ test("a capture function that throws rolls the baseline back too", async () => {
   // The connection is usable afterwards: no transaction left open.
   expect(() => db.exec("BEGIN; COMMIT;")).not.toThrow();
 });
+
+test("a throwing capture with siblings still in flight leaves the previous baseline intact", async () => {
+  const config = ConfigSchema.parse({
+    dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280],
+    concurrency: { screenshots: 4 },
+  });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(50) }) });
+  const before = readSnapshot(db)!;
+  let stops = 0;
+  await expect(snapshotPipeline({
+    config, db, createdAt: "t2", discover: async () => ["/a", "/b", "/c", "/d"],
+    captureFn: async (url) => {
+      if (url.endsWith("/a")) throw new Error("boom");
+      await new Promise((r) => setTimeout(r, 30));
+      return { ok: true, png: png(99) };
+    },
+    progress: { start: () => {}, tick: () => {}, stop: () => { stops++; } },
+  })).rejects.toThrow("boom");
+  await new Promise((r) => setTimeout(r, 80)); // let any straggler write
+  expect(stops).toBe(1);
+  expect(readSnapshot(db)).toEqual(before);
+  const rows = readBaselineImages(db);
+  expect(rows.map((r) => r.path)).toEqual(["/"]);
+  expect(Array.from(rows[0]!.image!)).toEqual(Array.from(png(50)));
+});

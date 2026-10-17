@@ -58,7 +58,13 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
     args.progress?.start(jobs.length, "Capturing prod");
     let failed = 0;
     let firstError = "";
+    // mapWithConcurrency rejects on the first throw while siblings are still in
+    // flight; a sibling saving after our ROLLBACK would autocommit into the
+    // restored baseline. So jobs never throw out of it: the first throw is
+    // recorded, later jobs skip their work, and we rethrow once all have settled.
+    let thrown: { error: unknown } | undefined;
     await mapWithConcurrency(jobs, config.concurrency.screenshots, async ({ target, viewport }) => {
+      if (thrown) { args.progress?.tick(); return; }
       try {
         // capture() never throws; on failure it returns { ok:false, error }.
         const res = await args.captureFn(target.url.prod, viewport, config);
@@ -70,11 +76,14 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
           status: res.ok ? "ok" : "error",
           error: res.ok ? undefined : res.error,
         });
+      } catch (error) {
+        thrown ??= { error };
       } finally {
         args.progress?.tick();
       }
     });
     args.progress?.stop();
+    if (thrown) throw thrown.error;
     if (jobs.length > 0 && failed === jobs.length) throw new ProdUnreachableError(config.prod, jobs.length, firstError);
 
     writeSnapshot(db, {
@@ -88,6 +97,7 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
     db.exec("COMMIT;");
     committed = true;
   } finally {
-    if (!committed) db.exec("ROLLBACK;");
+    // SQLite may already have rolled back on its own; don't mask the real error.
+    if (!committed && db.inTransaction) db.exec("ROLLBACK;");
   }
 }
