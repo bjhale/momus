@@ -227,7 +227,7 @@ message, surfaced in the report as an error card.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Ran; every comparison is `ok` and passed its gate. |
+| `0` | Ran; nothing fails the gate: every comparison passed, and any added/removed targets were allowed. |
 | `1` | Ran; at least one comparison failed the gate, errored, or is `added`/`removed` (unless allowed). An error counts as a regression signal, not a silent pass. |
 | `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict. |
 

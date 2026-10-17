@@ -72,7 +72,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
   const byKey = new Map<string, BaselineImageRow>(
     images.map((im) => [`${im.targetId} ${im.viewport}`, im]));
   const sources: TargetSource[] = [
-    pagesSource({ config, discover: args.discover, readUrlList: args.readUrlList }),
+    pagesSource({ config, discover: args.discover, readUrlList: args.readUrlList, urlListBase: snapshot.prodBaseUrl }),
     ...(args.sources ?? []),
   ];
 

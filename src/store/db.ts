@@ -114,6 +114,11 @@ function migrateToTargets(db: Database): void {
       db.exec(COMPARISONS_INDEX);
     }
   })();
+  // DROP TABLE only moves the old BLOB pages to the freelist. The .sqlite file
+  // is the committed baseline artifact, so reclaim them rather than ship the
+  // images twice. VACUUM can't run inside a transaction, hence after commit,
+  // and only here, where a rebuild actually happened.
+  db.exec("VACUUM;");
 }
 
 export function openDb(path: string): Database {

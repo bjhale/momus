@@ -170,29 +170,30 @@ the baseline: `scenarios` (the config) and `storybook` (`index.json`).
 
 ## Done when
 
-- [ ] `Target` replaces `path` as the pipeline's unit of work end to end.
-- [ ] The DB migrates to `target_id` keys, and existing baselines diff unchanged.
-- [ ] Pages-only behavior is byte-identical: the same ids, URLs and report
+- [x] `Target` replaces `path` as the pipeline's unit of work end to end.
+- [x] The DB migrates to `target_id` keys, and existing baselines diff unchanged.
+- [x] Pages-only behavior is byte-identical: the same ids, URLs and report
       ordering. Covered by the existing e2e tests passing unmodified.
-- [ ] Per-target recipe compatibility is gated per target, with an ADR.
-- [ ] `source` is stored per row; ids are unique across sources; a source that
+- [x] Per-target recipe compatibility is gated per target, with an ADR.
+- [x] `source` is stored per row; ids are unique across sources; a source that
       fails to list yields one error and no false `removed` rows. Tested with a
       failing fake source.
-- [ ] No branch on `source` in capture or diff. Checked in review and recorded
+- [x] No branch on `source` in capture or diff. Checked in review and recorded
       in an ADR.
-- [ ] Pages: a `run` reads `urlList` fresh, reports entries missing from the
+- [x] Pages: a `run` reads `urlList` fresh, reports entries missing from the
       baseline as `added`, never reports sitemap or crawl pages as `added`, and
       never reports any page `removed`. Discovery still never runs during a
       `run` against a frozen baseline.
 - [ ] `added` and `removed` statuses are stored, shown in the report, fail the
       gate by default, honor `--allow-added` and `--allow-removed`, and are
-      resolved by approval. Recorded in an ADR.
+      resolved by approval. Recorded in an ADR. (deferred — see Revisions)
 
 ## Revisions
 
 - **2026-10-16: implemented.** Changes from the accepted text:
   - The `targets` id filter is deferred to [RFC-0004](0004-scripted-interactions.md),
     the first source whose ids aren't paths.
-  - `maxPages` caps `urlList` additions, so the total stays within the cap.
+  - `maxPages` caps the `urlList` (in file order, after filters), and every
+    entry within the cap that the baseline lacks is `added`.
   - Resolving `added`/`removed` by approval ships with
     [RFC-0003](0003-approval-workflow.md); until then, re-snapshot or allow them.

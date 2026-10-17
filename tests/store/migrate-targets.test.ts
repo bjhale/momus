@@ -1,9 +1,9 @@
 // tests/store/migrate-targets.test.ts
 import { test, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { openDb, readBaselineImages, readComparisons, saveBaselineImage, type BaselineImageRow, type ComparisonRow } from "../../src/store/db";
+import { openDb as openDbRaw, readBaselineImages, readComparisons, saveBaselineImage, type BaselineImageRow, type ComparisonRow } from "../../src/store/db";
 
 // The pre-RFC-0001 shape (momus v0.9.x): both image tables keyed on path.
 const OLD_SCHEMA = `
@@ -22,9 +22,17 @@ CREATE TABLE baseline_images (path TEXT NOT NULL, viewport INTEGER NOT NULL, pro
 `;
 
 let dir = "";
-afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); dir = ""; });
+// Handles are closed before the directory goes: a live WAL handle on a deleted
+// file is what made the suite flake with a Bun unhandled-exception panic.
+const opened: Database[] = [];
+const openDb = (path: string): Database => { const d = openDbRaw(path); opened.push(d); return d; };
+afterEach(() => {
+  for (const d of opened.splice(0)) { try { d.close(); } catch { /* already closed */ } }
+  if (dir) rmSync(dir, { recursive: true, force: true });
+  dir = "";
+});
 
-function oldDb(): string {
+function oldDb(blobBytes = 3): string {
   dir = mkdtempSync(join(import.meta.dir, ".tmp-migrate-"));
   const file = join(dir, "old.sqlite");
   const db = new Database(file, { create: true });
@@ -33,7 +41,7 @@ function oldDb(): string {
   db.query(`INSERT INTO comparisons (run_id, path, viewport, dev_url, prod_url, diff_score, passed, status)
             VALUES (1, '/about', 1280, 'https://dev/about', 'https://prod/about', 0.5, 0, 'ok')`).run();
   db.query(`INSERT INTO baseline_images (path, viewport, prod_url, image, status) VALUES ('/about', 1280, 'https://prod/about', ?, 'ok')`)
-    .run(new Uint8Array([7, 7, 7]));
+    .run(blobBytes === 3 ? new Uint8Array([7, 7, 7]) : new Uint8Array(blobBytes).fill(7));
   db.close();
   return file;
 }
@@ -59,4 +67,13 @@ test("migration is idempotent across opens", () => {
   const db = openDb(file);
   expect(readBaselineImages(db).length).toBe(1);
   expect(readComparisons(db, 1).length).toBe(1);
+});
+
+test("a migration that rebuilt tables vacuums, so the old BLOBs leave the file", () => {
+  const file = oldDb(2_000_000);
+  const before = statSync(file).size;
+  const db = openDb(file);
+  expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  expect(statSync(file).size).toBeLessThan(before * 1.2);
 });

@@ -1,13 +1,18 @@
 // tests/store/db.test.ts
-import { test, expect } from "bun:test";
+import { test, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { rmSync } from "node:fs";
-import { openDb, startRun, saveComparison, finishRun, readComparisons } from "../../src/store/db";
+import { openDb as openDbRaw, startRun, saveComparison, finishRun, readComparisons } from "../../src/store/db";
 import type { ComparisonRecord } from "../../src/types";
 import {
   writeSnapshot, readSnapshot, saveBaselineImage, readBaselineImages,
   clearBaseline, clearRuns, type BaselineImageRow,
 } from "../../src/store/db";
+
+// Every handle is closed at test end, even when an assertion throws first.
+const opened: Database[] = [];
+const openDb = (path: string): Database => { const d = openDbRaw(path); opened.push(d); return d; };
+afterEach(() => { for (const d of opened.splice(0)) { try { d.close(); } catch { /* already closed */ } } });
 
 const STAB = {
   waitUntil: "networkidle" as const, settleMs: 500, timeoutMs: 15000,

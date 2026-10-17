@@ -195,7 +195,8 @@ Notes:
 
   On a `run` against a frozen baseline, `urlList` is re-read, and entries the
   baseline lacks are captured on dev and reported **added** (they fail the gate
-  unless `--allow-added`), within the `maxPages` cap. Sitemap and crawl pages come
+  unless `--allow-added`). `maxPages` caps the `urlList` itself, in file order, so
+  entries beyond the cap are not reported. Sitemap and crawl pages come
   only from the baseline, so a page that is new on dev isn't seen until the next
   `momus snapshot` unless it's listed in `urlList`. Removing a line from `urlList`
   doesn't drop its baseline page.
@@ -289,6 +290,9 @@ piping stdout to a file stays clean.
 
 ## Notes & known limitations
 
+- **The database is migrated in place.** An `output.db` opened by this version is
+  upgraded to target-keyed tables and can no longer be written by older momus
+  versions.
 - **Distributed as a Docker image, not a standalone binary.** momus drives
   Chromium via Playwright, which needs its `node_modules` and a matching browser
   at runtime — awkward to ship as a lone executable. The image bundles momus

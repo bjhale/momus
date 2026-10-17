@@ -10,6 +10,10 @@ export interface PagesSourceArgs {
   discover: () => Promise<string[]>;
   /** Injectable for tests; defaults to reading the file from disk. */
   readUrlList?: (path: string) => Promise<string>;
+  /** Origin full-URL urlList entries are parsed against. Defaults to `config.prod`;
+   * a run passes the baseline's prod origin so a changed `prod` can't make every
+   * full-URL entry throw and fail the whole source. */
+  urlListBase?: string;
 }
 
 /** Discovered pages as targets. On a run against a frozen baseline the baseline
@@ -35,12 +39,16 @@ export function pagesSource(args: PagesSourceArgs): TargetSource {
 
       const knownSet = new Set(known);
       const keep = pathFilter(config.discovery.include, config.discovery.exclude);
-      const fresh = [...new Set(parseUrlList(await readUrlList(file), config.prod))]
-        .filter((p) => keep(p) && !knownSet.has(p));
-      // maxPages caps the total compared (ADR-0012). Without this, urlList
-      // entries the cap dropped at snapshot time would show as `added` forever.
+      const listed = [...new Set(parseUrlList(await readUrlList(file), args.urlListBase ?? config.prod))]
+        .filter(keep);
+      // maxPages caps the urlList itself (ADR-0012: urlList seeds come first in
+      // discovery order). Entries the cap dropped at snapshot are exactly those
+      // beyond maxPages in file order, so they stay excluded and are not `added`
+      // forever; nothing listed within the cap is hidden, so a new entry is
+      // always reported even when the baseline is already full.
       const max = config.discovery.maxPages;
-      const added = max === 0 ? fresh : fresh.slice(0, Math.max(0, max - known.length));
+      const capped = max === 0 ? listed : listed.slice(0, max);
+      const added = capped.filter((p) => !knownSet.has(p));
       return [...known, ...added].map((p) => pageTarget(p, config));
     },
   };

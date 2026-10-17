@@ -35,13 +35,30 @@ test("listLive with a urlList: adds entries the baseline lacks, honoring exclude
   expect(ts.map((t) => t.id)).toEqual(["/", "/new", "/also-new"]);
 });
 
-test("listLive: additions are capped so the total stays within maxPages", async () => {
+test("listLive: the cap slices the urlList, so nothing listed within it is hidden", async () => {
   const read = async () => "/n1\n/n2\n/n3\n";
   const at = (maxPages: number) => pagesSource({ config: cfg({ urlList: "u", maxPages }), discover: noDiscover, readUrlList: read })
     .listLive([ref("/a"), ref("/b")]).then((ts) => ts.map((t) => t.id));
-  expect(await at(2)).toEqual(["/a", "/b"]);              // baseline already at the cap
-  expect(await at(3)).toEqual(["/a", "/b", "/n1"]);
+  expect(await at(2)).toEqual(["/a", "/b", "/n1", "/n2"]);
+  expect(await at(3)).toEqual(["/a", "/b", "/n1", "/n2", "/n3"]);
   expect(await at(0)).toEqual(["/a", "/b", "/n1", "/n2", "/n3"]); // 0 = unlimited
+});
+
+test("listLive: baseline paths listed first use up the cap, adding nothing", async () => {
+  const src = pagesSource({ config: cfg({ urlList: "u", maxPages: 2 }), discover: noDiscover,
+    readUrlList: async () => "/a\n/b\n/n1\n" });
+  const ts = await src.listLive([ref("/a"), ref("/b")]);
+  expect(ts.map((t) => t.id)).toEqual(["/a", "/b"]);
+});
+
+test("listLive: full-URL entries parse against urlListBase, not a changed config.prod", async () => {
+  const src = pagesSource({ config: cfg({ urlList: "u" }), discover: noDiscover,
+    urlListBase: "https://old-prod.example.org",
+    readUrlList: async () => "https://old-prod.example.org/x\n" });
+  expect((await src.listLive([ref("/")])).map((t) => t.id)).toEqual(["/", "/x"]);
+  const bad = pagesSource({ config: cfg({ urlList: "u" }), discover: noDiscover,
+    readUrlList: async () => "https://old-prod.example.org/x\n" });
+  await expect(bad.listLive([ref("/")])).rejects.toThrow();
 });
 
 test("listLive rejects when the urlList can't be read", async () => {

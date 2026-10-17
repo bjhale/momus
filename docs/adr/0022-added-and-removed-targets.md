@@ -24,9 +24,15 @@ without touching prod or reversing ADR-0008.
   re-read on every run, which needs no network and no prod. Sitemap and crawl
   pages are never `added`, and no page is ever `removed`. Dropping a page takes
   a snapshot, or `momus baseline drop` once RFC-0003 ships.
-- Additions are capped so the total stays within `maxPages`
-  ([ADR-0012](0012-maxpages-cap-semantics.md)). Otherwise urlList entries the cap
-  dropped at snapshot time would be `added` on every run.
+- `maxPages` caps the `urlList` itself, after `include`/`exclude` and dedupe, in
+  file order ([ADR-0012](0012-maxpages-cap-semantics.md): urlList seeds come
+  first). Every capped entry missing from the baseline is `added`; baseline
+  paths are always kept. Entries the cap dropped at snapshot are exactly those
+  beyond `maxPages` in file order, so they stay excluded rather than being
+  `added` forever, and nothing listed within the cap is hidden, even when the
+  baseline is already full.
+- Full-URL `urlList` entries are parsed against the baseline's prod origin, so
+  changing `prod` after a snapshot doesn't fail the pages source.
 - A source that fails to list during a run yields **one** error row
   (`source:<name>`, viewport 0), and its baseline rows are skipped. The run
   continues and exits 1. A source that fails during a snapshot fails the

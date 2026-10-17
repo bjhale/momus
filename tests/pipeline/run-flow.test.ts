@@ -288,6 +288,22 @@ test("a source that fails to list: one error row, its targets skipped, pages sti
   expect(rows["/"]!.status).toBe("ok");
 });
 
+test("a live listing with invalid ids is one source error row, baseline rows skipped, pages compared", async () => {
+  const db = openDb(":memory:");
+  let bad = false;
+  const sources = [scenarios(async () => [scenario(bad ? "bad" : "scenarios:a")])];
+  await runFlow({ config: cfg(), db, now: "t1", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  bad = true;
+  await runFlow({ config: cfg(), db, now: "t2", discover: async () => ["/"], sources,
+    captureProd: prodOk, getDev: devOk, diffPool });
+  const rows = byId(db);
+  expect(Object.keys(rows).sort()).toEqual(["/", "source:scenarios"]);
+  expect(rows["source:scenarios"]!.status).toBe("error");
+  expect(rows["source:scenarios"]!.error).toContain('must start with "scenarios:"');
+  expect(rows["/"]!.status).toBe("ok");
+});
+
 test("an unreadable urlList on a frozen run is one pages source error", async () => {
   const db = openDb(":memory:");
   const config = cfg({ discovery: { urlList: "urls.txt", sitemap: false } });
