@@ -85,3 +85,39 @@ test("all-error report: FAIL verdict and worst: n/a", () => {
   expect(html).toContain("2 errored");
   expect(html).toContain("worst: n/a");
 });
+
+const changed: ComparisonRecord[] = [
+  { targetId: "/new", source: "pages", label: "/new", path: "/new", viewport: 1280,
+    devUrl: "d", prodUrl: "p", devImage: new Uint8Array([1]), status: "added" },
+  { targetId: "scenarios:gone", source: "scenarios", label: "Gone scenario", path: "/", viewport: 1280,
+    devUrl: "", prodUrl: "p", prodImage: new Uint8Array([2]), status: "removed" },
+];
+
+test("added and removed render their own badge and a single image", () => {
+  const html = renderReport(changed, { dev: "d", prod: "p" });
+  expect(html).toContain(">ADDED<");
+  expect(html).toContain(">REMOVED<");
+  expect(html).toContain("Gone scenario");          // label, not path
+  expect(html).toContain('class="item added"');
+  expect(html).toContain('class="item removed"');
+  expect(html).toContain(" · 1 added · 1 removed</div>");
+  expect(html).toContain("momus — FAIL");
+});
+
+test("allowed added/removed render a PASS verdict", () => {
+  expect(renderReport(changed, { dev: "d", prod: "p" }, { allowAdded: true, allowRemoved: true }))
+    .toContain("momus — PASS");
+});
+
+test("a source-level error row renders without a viewport", () => {
+  const html = renderReport([{ targetId: "source:scenarios", source: "scenarios", label: "scenarios source",
+    path: "", viewport: 0, devUrl: "", prodUrl: "", status: "error", error: "could not list scenarios targets: boom" }],
+    { dev: "d", prod: "p" });
+  expect(html).toContain("scenarios source");
+  expect(html).not.toContain("@0");
+});
+
+test("a pages-only report's counts line is unchanged", () => {
+  const html = renderReport(rows, { dev: "https://dev", prod: "https://prod" });
+  expect(html).toContain("3 comparisons · 1 passed · 1 failed · 1 errored</div>");
+});

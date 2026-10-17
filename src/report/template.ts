@@ -1,6 +1,7 @@
 // src/report/template.ts
 import type { ComparisonRecord } from "../types";
 import { summarize, itemClass } from "./summary";
+import { STRICT_GATE, type GateOptions } from "../pipeline/verdict";
 
 function b64(bytes?: Uint8Array): string {
   if (!bytes) return "";
@@ -11,19 +12,41 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 }
 
+function name(r: ComparisonRecord): string {
+  return esc(r.label ?? r.path);
+}
+
+/** Source-level error rows carry viewport 0: they belong to no width. */
+function vp(r: ComparisonRecord): string {
+  return r.viewport > 0 ? ` <span class="vp">@${r.viewport}</span>` : "";
+}
+
 /** One comparison as a collapsed accordion. */
 function item(r: ComparisonRecord): string {
   const cls = itemClass(r);
   if (r.status === "error") {
     return `<details class="item ${cls}">
-  <summary><span class="badge err">ERROR</span> <span class="path">${esc(r.path)}</span> <span class="vp">@${r.viewport}</span></summary>
+  <summary><span class="badge err">ERROR</span> <span class="path">${name(r)}</span>${vp(r)}</summary>
   <div class="msg">${esc(r.error ?? "unknown error")}</div>
+</details>`;
+  }
+  if (r.status === "added" || r.status === "removed") {
+    // Only one side exists, so there is nothing to diff: show that side alone.
+    const [badge, caption, img] = r.status === "added"
+      ? [`<span class="badge new">ADDED</span>`, "dev (not in the baseline)", r.devImage]
+      : [`<span class="badge gone">REMOVED</span>`, "baseline (no longer listed)", r.prodImage];
+    const body = img
+      ? `<figure><figcaption>${caption}</figcaption><img src="${b64(img)}" alt="${r.status}"></figure>`
+      : `<div class="msg">${esc(r.error ?? "no image captured")}</div>`;
+    return `<details class="item ${cls}">
+  <summary>${badge} <span class="path">${name(r)}</span>${vp(r)}</summary>
+  <div class="single">${body}</div>
 </details>`;
   }
   const badge = r.passed ? `<span class="badge pass">PASS</span>` : `<span class="badge fail">FAIL</span>`;
   const pct = ((r.diffScore ?? 0) * 100).toFixed(2);
   return `<details class="item ${cls}">
-  <summary>${badge} <span class="path">${esc(r.path)}</span> <span class="vp">@${r.viewport}</span> <span class="score">${pct}%</span></summary>
+  <summary>${badge} <span class="path">${name(r)}</span>${vp(r)} <span class="score">${pct}%</span></summary>
   <div class="triptych">
     <figure><figcaption>dev</figcaption><img src="${b64(r.devImage)}" alt="dev"></figure>
     <figure><figcaption>prod</figcaption><img src="${b64(r.prodImage)}" alt="prod"></figure>
@@ -32,17 +55,26 @@ function item(r: ComparisonRecord): string {
 </details>`;
 }
 
+/** Worst-first ordering: errors, then added/removed (unreviewed changes, above
+ * any diff score, which is at most 1), then highest diffScore. */
+function rank(r: ComparisonRecord): number {
+  if (r.status === "error") return Infinity;
+  if (r.status === "added" || r.status === "removed") return 2;
+  return r.diffScore ?? 0;
+}
+
+/** Only shown when present, so a pages-only report reads exactly as before. */
+function changes(s: { added: number; removed: number }): string {
+  return (s.added ? ` · ${s.added} added` : "") + (s.removed ? ` · ${s.removed} removed` : "");
+}
+
 export function renderReport(
   records: ComparisonRecord[],
   meta: { dev: string; prod: string },
+  gate: GateOptions = STRICT_GATE,
 ): string {
-  // Worst-first: errors, then highest diffScore.
-  const sorted = [...records].sort((a, b) => {
-    const as = a.status === "error" ? Infinity : (a.diffScore ?? 0);
-    const bs = b.status === "error" ? Infinity : (b.diffScore ?? 0);
-    return bs - as;
-  });
-  const s = summarize(records);
+  const sorted = [...records].sort((a, b) => rank(b) - rank(a));
+  const s = summarize(records, gate);
   const items = sorted.map(item).join("\n");
   const worst = s.worst
     ? `worst: ${esc(s.worst.path)} @${s.worst.viewport} (${s.worst.pct}%)`
@@ -55,7 +87,7 @@ export function renderReport(
 <header class="${s.verdict}">
   <div class="verdict">momus — ${s.verdict}</div>
   <div class="urls">${esc(meta.dev)} vs ${esc(meta.prod)}</div>
-  <div class="counts">${s.total} comparisons · ${s.passed} passed · ${s.failed} failed · ${s.errored} errored</div>
+  <div class="counts">${s.total} comparisons · ${s.passed} passed · ${s.failed} failed · ${s.errored} errored${changes(s)}</div>
   <div class="extras">${worst} · viewports: ${s.viewports.join(", ")}</div>
   <div class="filter">
     <button data-filter="all" class="active">All</button>
@@ -88,7 +120,11 @@ const STYLES = `
   .badge.pass { background: #164; color: #cffcd8; }
   .badge.fail { background: #a22; color: #ffd9d9; }
   .badge.err { background: #9a6a12; color: #ffe9c2; }
+  .badge.new { background: #1f4f8a; color: #d6e8ff; }
+  .badge.gone { background: #555; color: #eee; }
   .triptych { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem; padding: 0 1.5rem 1rem; }
+  .single { padding: 0 1.5rem 1rem; }
+  .single figure { max-width: 40rem; }
   figure { margin: 0; }
   figcaption { color: #888; font-size: .75rem; margin-bottom: .25rem; }
   img { max-width: 100%; border: 1px solid #444; background: #fff; }
