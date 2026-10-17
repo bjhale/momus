@@ -53,6 +53,7 @@ export function baselineIdentityJson(s: SnapshotMeta): string {
   return canonicalJson({
     id: s.id, createdAt: s.createdAt, prodBaseUrl: s.prodBaseUrl,
     browser: s.browser ?? "chromium", viewports: s.viewports, stabilize: s.stabilize,
+    ...(s.setupJson ? { setup: s.setupJson } : {}),
   })!;
 }
 

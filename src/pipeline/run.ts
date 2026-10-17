@@ -5,16 +5,18 @@ import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
 import type { Progress } from "../progress";
+import { redactConfig } from "../config/redact";
 import { canonicalJson, type Recipe, type TargetSourceName } from "../targets/target";
 import { startRun, saveComparison, finishRun, type CiMetadata } from "../store/db";
 import { MOMUS_VERSION } from "../version";
 import { mapWithConcurrency } from "./queue";
 import { resolveFailScore, passed } from "./verdict";
 
-/** sha256 of the resolved config with sorted keys, so two runs with the same
+/** sha256 of the resolved config (setup secrets redacted first, so none is
+ * ever hashed) with sorted keys, so two runs with the same
  * effective config hash alike regardless of how the file was written. */
 export function configHash(config: ResolvedConfig): string {
-  return createHash("sha256").update(canonicalJson(config)!).digest("hex");
+  return createHash("sha256").update(canonicalJson(redactConfig(config))!).digest("hex");
 }
 
 export interface DiffPoolLike {
@@ -73,7 +75,7 @@ export async function runPipeline(args: RunPipelineArgs): Promise<number> {
   const { config, db } = args;
   const runId = startRun(db, {
     devBaseUrl: config.dev, prodBaseUrl: args.prodBaseUrl ?? config.prod,
-    configJson: JSON.stringify(config), startedAt: args.startedAt,
+    configJson: JSON.stringify(redactConfig(config)), startedAt: args.startedAt,
     momusVersion: MOMUS_VERSION, engine: config.browser, engineVersion: args.engineVersion,
     configHash: configHash(config),
     baselineId: args.baseline?.id, baselineJson: args.baseline?.identityJson,

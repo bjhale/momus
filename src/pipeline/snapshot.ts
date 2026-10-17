@@ -6,6 +6,7 @@ import type { Progress } from "../progress";
 import { clearBaseline, saveBaselineImage, writeSnapshot } from "../store/db";
 import { mapWithConcurrency } from "./queue";
 import { pagesSource } from "../targets/pages";
+import { redactConfig, setupIdentity } from "../config/redact";
 import { canonicalJson, checkTargetIds, expandViewports, type Recipe, type TargetSource } from "../targets/target";
 
 export interface SnapshotPipelineArgs {
@@ -95,7 +96,8 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
       prodBaseUrl: config.prod,
       viewports: config.viewports,
       stabilize: config.stabilize,
-      configJson: JSON.stringify(config),
+      configJson: JSON.stringify(redactConfig(config)),
+      setupJson: setupIdentity(config),
       browser: config.browser,
     });
     db.exec("COMMIT;");

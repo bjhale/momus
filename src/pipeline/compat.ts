@@ -1,5 +1,6 @@
 // src/pipeline/compat.ts
 import type { ResolvedConfig } from "../config/schema";
+import { setupIdentity } from "../config/redact";
 import type { SnapshotMeta } from "../store/db";
 
 /** A prod baseline is only diff-able against dev when it was captured from the
@@ -46,6 +47,13 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta)
   const cr = cs.remove ?? [], sr = ss.remove ?? [];
   if (cr.length !== sr.length || cr.some((m, i) => m !== sr[i])) {
     return `stabilize.remove differs: config ${JSON.stringify(cr)} vs baseline ${JSON.stringify(sr)}`;
+  }
+
+  // Only prod's setup shaped the baseline, so dev's may change freely. Fill
+  // values and storageState aren't part of it (RFC-0004, ADR-0030).
+  if (setupIdentity(config) !== (snapshot.setupJson ?? null)) {
+    return "prod setup differs from the baseline's (fill values and storageState files are not compared). " +
+      "Re-capture the baseline with `momus run --snapshot` (or `momus snapshot`).";
   }
 
   return null;

@@ -516,3 +516,18 @@ test("a baseline conflict returns before dev setup", async () => {
     captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool });
   expect(res.ok).toBe(false);
 });
+
+test("setup secrets never reach the .sqlite", async () => {
+  const db = openDb(":memory:");
+  const config = cfg({ setup: { dev: { steps: [{ goto: "/login" }, { fill: ["#p", "devsecret"] }] },
+    prod: { steps: [{ goto: "/login" }, { fill: ["#p", "prodsecret"] }] } } });
+  const res = await runFlow({ config, db, now: "t1", discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(1) }), getDev: async () => ({ ok: true, png: png(1) }), diffPool });
+  if (!res.ok) throw new Error("expected ok");
+  const dump = JSON.stringify([
+    db.query("SELECT * FROM snapshot").all(),
+    db.query("SELECT id, config_json, config_hash, baseline_json FROM runs").all(),
+  ]);
+  expect(dump).not.toContain("devsecret");
+  expect(dump).not.toContain("prodsecret");
+});

@@ -1,6 +1,7 @@
 // tests/pipeline/compat.test.ts
 import { test, expect } from "bun:test";
 import { baselineConflict } from "../../src/pipeline/compat";
+import { setupIdentity } from "../../src/config/redact";
 import { ConfigSchema } from "../../src/config/schema";
 import type { SnapshotMeta } from "../../src/store/db";
 
@@ -9,7 +10,7 @@ function cfg(over: Record<string, unknown> = {}) {
 }
 
 function snapFrom(c: ReturnType<typeof cfg>): SnapshotMeta {
-  return { createdAt: "t", prodBaseUrl: c.prod, viewports: c.viewports, stabilize: c.stabilize, configJson: "{}", browser: c.browser };
+  return { createdAt: "t", prodBaseUrl: c.prod, viewports: c.viewports, stabilize: c.stabilize, configJson: "{}", browser: c.browser, setupJson: setupIdentity(c) };
 }
 
 test("differing browser → conflict mentioning browser", () => {
@@ -89,4 +90,24 @@ test("a different port or scheme is a different origin", () => {
   const snap = snapFrom(cfg());
   expect(baselineConflict(cfg({ prod: "http://www.example.com" }), snap)).toContain("prod origin differs");
   expect(baselineConflict(cfg({ prod: "https://www.example.com:8443" }), snap)).toContain("prod origin differs");
+});
+
+test("a changed prod setup is a conflict; a changed dev setup is not", () => {
+  const login = (sel: string) => ({ steps: [{ goto: "/login" }, { click: sel }] });
+  const baseline = cfg({ setup: { dev: login("a"), prod: login("a") } });
+  expect(baselineConflict(cfg({ setup: { dev: login("b"), prod: login("a") } }), snapFrom(baseline))).toBeNull();
+  expect(baselineConflict(cfg({ setup: { dev: login("a"), prod: login("b") } }), snapFrom(baseline)))
+    .toContain("prod setup differs");
+});
+
+test("adding or removing setup is a conflict", () => {
+  const withSetup = cfg({ setup: { storageState: "a.json" } });
+  expect(baselineConflict(withSetup, snapFrom(cfg()))).toContain("prod setup differs");
+  expect(baselineConflict(cfg(), snapFrom(withSetup))).toContain("prod setup differs");
+});
+
+test("a baseline from before setup existed (no setupJson) matches a config without setup", () => {
+  const c = cfg();
+  const { setupJson: _omit, ...old } = snapFrom(c);
+  expect(baselineConflict(c, old)).toBeNull();
 });

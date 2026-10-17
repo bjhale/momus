@@ -123,3 +123,18 @@ test("v3: allow_added/allow_removed are backfilled from config_json; absent or i
   expect(get(2)).toEqual({ allow_added: null, allow_removed: null });
   expect(get(3)).toEqual({ allow_added: null, allow_removed: null });
 });
+
+test("v4: snapshot gains setup_json; a v3 snapshot row migrates with NULL", () => {
+  const fresh = openDb(":memory:");
+  const cols = (fresh.query("PRAGMA table_info(snapshot)").all() as Array<{ name: string }>).map((c) => c.name);
+  expect(cols).toContain("setup_json");
+
+  const file = tmpFile();
+  const raw = track(new Database(file, { create: true }));
+  migrate(raw, MIGRATIONS.slice(0, 3));
+  raw.exec(`INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json) VALUES ('t','p','[]','{}','{}')`);
+  raw.close();
+  const db = openDb(file);
+  expect(userVersion(db)).toBe(LATEST_VERSION);
+  expect(db.query("SELECT created_at, setup_json FROM snapshot").get()).toEqual({ created_at: "t", setup_json: null });
+});

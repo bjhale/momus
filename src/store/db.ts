@@ -149,14 +149,16 @@ export interface SnapshotMeta {
   stabilize: StabilizeOptions;
   configJson: string;
   browser?: BrowserEngine;
+  /** Redacted canonical JSON of prod's setup; null = no setup. */
+  setupJson?: string | null;
 }
 
 export function writeSnapshot(db: Database, m: SnapshotMeta): number {
   db.exec("DELETE FROM snapshot;");
   const res = db.query(
-    `INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson, m.browser ?? "chromium");
+    `INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser, setup_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson, m.browser ?? "chromium", m.setupJson ?? null);
   return Number(res.lastInsertRowid);
 }
 
@@ -171,6 +173,7 @@ export function readSnapshot(db: Database): SnapshotMeta | null {
     stabilize: JSON.parse(row.stabilize_json),
     configJson: row.config_json,
     browser: (row.browser ?? "chromium") as BrowserEngine,
+    setupJson: row.setup_json ?? null,
   };
 }
 

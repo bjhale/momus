@@ -293,3 +293,12 @@ test("baseline identity and recipe round-trip; omitted identity defaults to a pa
   expect([page.targetId, page.source, page.label, page.recipeJson]).toEqual(["/", "pages", "/", null]);
   expect([sc.targetId, sc.source, sc.label, sc.recipeJson]).toEqual(["scenarios:nav", "scenarios", "Nav", '{"a":1}']);
 });
+
+test("snapshot setupJson round-trips; absent reads as null", () => {
+  const db = openDb(":memory:");
+  const m = { createdAt: "t", prodBaseUrl: "https://p", viewports: [1280], stabilize: STAB, configJson: "{}" };
+  writeSnapshot(db, { ...m, setupJson: '{"steps":[]}' });
+  expect(readSnapshot(db)!.setupJson).toBe('{"steps":[]}');
+  writeSnapshot(db, m);
+  expect(readSnapshot(db)!.setupJson).toBeNull();
+});

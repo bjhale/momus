@@ -216,10 +216,18 @@ function v3(db: Database): void {
   db.exec("ALTER TABLE comparisons ADD COLUMN fail_score REAL;");
 }
 
+// --- v4: the prod setup's identity on the baseline (RFC-0004, ADR-0030).
+// NULL means "no setup", which every earlier baseline had, so they stay
+// diffable against a config without setup (ADR-0010).
+function v4(db: Database): void {
+  db.exec("ALTER TABLE snapshot ADD COLUMN setup_json TEXT;");
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: v1 },
   { version: 2, up: v2, vacuum: true },
   { version: 3, up: v3, vacuum: true },
+  { version: 4, up: v4 },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
