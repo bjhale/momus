@@ -11,7 +11,8 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "test": "bun test --timeout 30000",
+    "test": "bun test --timeout 30000 && bun run test:engines",
+    "test:engines": "MOMUS_ENGINE=firefox bun test --timeout 30000 tests/capture/steps.integration.test.ts && MOMUS_ENGINE=webkit bun test --timeout 30000 tests/capture/steps.integration.test.ts",
     "momus": "bun run src/cli.ts",
     "build:dev": "docker build -t momus-dev ."
   },

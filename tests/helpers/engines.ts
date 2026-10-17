@@ -21,3 +21,17 @@ export function launchable(engine: BrowserEngine): Promise<boolean> {
   }
   return p;
 }
+
+const KNOWN: BrowserEngine[] = ["chromium", "firefox", "webkit"];
+
+function pickEngines(): BrowserEngine[] {
+  const e = process.env.MOMUS_ENGINE;
+  if (!e) return ["chromium"];
+  if (!KNOWN.includes(e as BrowserEngine)) throw new Error(`MOMUS_ENGINE must be one of ${KNOWN.join(", ")}, got "${e}"`);
+  return [e as BrowserEngine];
+}
+
+// Launching a second engine in the same bun test process makes later Playwright
+// launches fail intermittently (Bun spawn "Failed to connect"), so each
+// non-default engine runs in its own process via `bun run test:engines`.
+export const TEST_ENGINES: BrowserEngine[] = pickEngines();

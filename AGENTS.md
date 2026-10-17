@@ -20,7 +20,9 @@ something that looks odd.
 ## Commands
 
 ```bash
-bun run test                         # whole suite (~300 tests, ~9s); adds --timeout, as CI does
+bun run test                         # whole suite (~300 tests, ~9s); adds --timeout, as CI does;
+                                     # then `test:engines` reruns the multi-engine tests for firefox and
+                                     # webkit, each in its own process (Bun breaks on two engines in one)
 bunx tsc --noEmit                    # typecheck
 bun run src/cli.ts <command>         # run momus from source (or: bun momus)
 bun run src/cli.ts install-browser   # needed once before browser-guarded tests

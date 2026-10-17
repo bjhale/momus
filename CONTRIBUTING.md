@@ -26,7 +26,7 @@ bun run build:dev    # docker build -t momus-dev .
 ## Tests
 
 ```bash
-bun run test         # the whole suite (with the CI timeout)
+bun run test         # the whole suite (with the CI timeout), then firefox/webkit engine tests each in their own process
 bunx tsc --noEmit    # typecheck
 ```
 
