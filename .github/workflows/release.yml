@@ -28,7 +28,9 @@ jobs:
       - name: Type-check
         run: bunx tsc --noEmit
       - name: Test
-        run: bun test
+        # `bun run test`, not `bun test`: the script carries --timeout, which a
+        # cold Chromium launch on a shared runner can need beyond bun's 5s default.
+        run: bun run test
 
   # A notes-only GitHub release for the changelog. momus is distributed as the
   # Docker image (see the docker job) — Chromium and its dependencies are baked

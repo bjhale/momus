@@ -26,7 +26,7 @@ bun run build:dev    # docker build -t momus-dev .
 ## Tests
 
 ```bash
-bun test             # the whole suite
+bun run test         # the whole suite (with the CI timeout)
 bunx tsc --noEmit    # typecheck
 ```
 

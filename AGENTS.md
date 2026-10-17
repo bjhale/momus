@@ -20,14 +20,14 @@ something that looks odd.
 ## Commands
 
 ```bash
-bun test                             # whole suite (~190 tests, ~8s)
+bun run test                         # whole suite (~190 tests, ~8s); adds --timeout, as CI does
 bunx tsc --noEmit                    # typecheck
 bun run src/cli.ts <command>         # run momus from source (or: bun momus)
 bun run src/cli.ts install-browser   # needed once before browser-guarded tests
 bun run build:dev                    # docker build -t momus-dev .
 ```
 
-Run **both** `bun test` and `bunx tsc --noEmit` before claiming work is done.
+Run **both** `bun run test` and `bunx tsc --noEmit` before claiming work is done.
 Neither is slow enough to skip.
 
 ## Invariants

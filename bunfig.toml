@@ -1,3 +1,5 @@
 [test]
-# Bun ignores a `timeout` key here, so the default is raised in a preload.
-preload = ["./tests/setup.ts"]
+# Bun test config placeholder; coverage can be enabled later.
+# Not the place for a test timeout: bun ignores a `timeout` key here, and a
+# preload's setDefaultTimeout only reaches the first test file. The timeout is
+# the --timeout flag in package.json's "test" script.
