@@ -32,6 +32,33 @@ export function configScaffold(): string {
     // remove: [".cookie-banner"],   // delete elements from the DOM before capture (space collapses)
   },
 
+  // Pages in another state. Steps: click, hover, fill, press, select, scroll, waitFor, wait, evaluate.
+  // Don't put credentials in scenario steps; they are stored in the .sqlite as-is.
+  // scenarios: [
+  //   {
+  //     id: "nav-open",
+  //     path: "/",
+  //     steps: [{ click: "button[aria-label=Menu]" }, { waitFor: "nav[data-open]" }],
+  //     capture: { element: "nav" },   // optional; default is the full page
+  //     viewports: [375],              // optional; narrows the viewports above
+  //   },
+  // ],
+
+  // Log in once per side before capturing. Credentials belong here (or in a
+  // storageState file), read from the environment, never in scenarios.
+  // setup: {
+  //   dev: {
+  //     steps: [
+  //       { goto: "/login" },
+  //       { fill: ["#email", Bun.env.MOMUS_DEV_USER] },
+  //       { fill: ["#password", Bun.env.MOMUS_DEV_PASS] },
+  //       { click: "button[type=submit]" },
+  //       { waitFor: "[data-user-menu]" },
+  //     ],
+  //   },
+  //   prod: { storageState: "prod-auth.json" },   // or steps, chosen per side
+  // },
+
   diff: {
     threshold: 0.1,
     failScore: 0.01,

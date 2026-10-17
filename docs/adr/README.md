@@ -40,6 +40,9 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0026](0026-prod-origin-in-the-gate.md) | The prod origin joins the compatibility gate | 2026-10-17 |
 | [0027](0027-atomic-baseline-replacement.md) | A baseline is replaced atomically; an all-error capture doesn't freeze | 2026-10-17 |
 | [0028](0028-approval-belongs-to-the-server.md) | Approval belongs to the server, not 1.x | 2026-10-17 |
+| [0029](0029-scenarios-and-step-order.md) | Scenarios are declarative steps; animations off before steps, mask and remove after | 2026-10-17 |
+| [0030](0030-setup-per-side.md) | Setup runs once per side; prod logs in only for a baseline; only prod's redacted setup is gated | 2026-10-17 |
+| [0031](0031-per-engine-test-processes.md) | Each non-default browser engine's tests run in their own process | 2026-10-17 |
 
 ## Open questions
 

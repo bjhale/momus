@@ -40,7 +40,7 @@ Each RFC has these sections:
 | [0001](0001-targets.md) | Targets: generalize "page path" | M1 | Implemented |
 | [0002](0002-storage-and-run-history.md) | Storage versioning and run history | M1 | Implemented |
 | [0003](0003-approval-workflow.md) | Approved baselines and the approval workflow | — | Withdrawn (to 2.0, [ADR-0028](../adr/0028-approval-belongs-to-the-server.md)) |
-| [0004](0004-scripted-interactions.md) | Scripted interactions, element capture, and auth | M3 | Accepted |
+| [0004](0004-scripted-interactions.md) | Scripted interactions, element capture, and auth | M3 | Implemented |
 | [0005](0005-storybook.md) | Storybook stories as targets | — | Withdrawn |
 | [0006](0006-capture-determinism-and-diff-quality.md) | Capture determinism and diff quality | M5 | Draft |
 | [0007](0007-review-report.md) | Review report v2 | M6 | Draft |

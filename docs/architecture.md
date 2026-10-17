@@ -55,12 +55,14 @@ rather than near-simultaneously. That temporal skew is inherent to a frozen
 baseline; selector masking is the mitigation.
 
 Before diffing, a **compatibility gate** ([compat.ts](../src/pipeline/compat.ts))
-compares the live config's prod origin, `browser`, `viewports`, and `stabilize`
-against the baseline's. Any mismatch is a hard error (exit 2) — a dev capture at
+compares the live config's prod origin, `browser`, `viewports`, `stabilize`, and
+prod `setup` against the baseline's. Any mismatch is a hard error (exit 2) — a dev capture at
 1280px against a prod capture at 768px is ~100% "changed" and tells you nothing,
 and a baseline from another prod origin is another site
 ([ADR-0026](adr/0026-prod-origin-in-the-gate.md)). `--prod` overrides
-`config.prod`, so a mismatching `--prod` on `run` is caught the same way.
+`config.prod`, so a mismatching `--prod` on `run` is caught the same way. Only
+prod's setup is compared, as redacted canonical JSON in `snapshot.setup_json`
+([ADR-0030](adr/0030-setup-per-side.md)); scenario recipes are gated per target.
 
 ## Pipeline
 
@@ -115,12 +117,15 @@ src/
 ├── cli.ts              # arg parsing (util.parseArgs), subcommand dispatch, help
 ├── commands/           # init, install, snapshot, run, report — config load, browser
 │                       #   lifecycle, and wiring; logic lives in pipeline/
+│   └── capture-seams.ts  # the real setupDev/setupProd/getDev/captureProd; holds the sessions
 ├── config/
 │   ├── schema.ts       # Zod schema, ResolvedConfig, defineConfig()
+│   ├── redact.ts       # redactConfig / setupIdentity: no credential, or hash of one, is stored
 │   └── load.ts         # read config file, apply CLI overrides
 ├── targets/
 │   ├── target.ts       # Target, TargetSource, ids, viewport narrowing, canonical recipe JSON (pure)
 │   ├── pages.ts        # pagesSource: discovery for snapshots; baseline ∪ urlList for runs
+│   ├── scenarios.ts    # scenariosSource: configured scenarios → targets with recipes
 │   └── reconcile.ts    # baseline + live lists → jobs: compare / added / removed / error (pure)
 ├── discovery/
 │   ├── urllist.ts      # parseUrlList: lines → paths (pure)
@@ -131,7 +136,9 @@ src/
 ├── capture/
 │   ├── browser.ts      # engine map, launch, newContext
 │   ├── stabilize.ts    # wait, disable animations, mask/remove selectors
-│   └── screenshot.ts   # capture(url, viewport, opts) → PNG buffer
+│   ├── steps.ts        # runSteps: the step vocabulary → Playwright calls; StepError
+│   ├── setup.ts        # runSetup: log in once per side → in-memory session; SetupError
+│   └── screenshot.ts   # capture(url, viewport, opts, extras) → PNG buffer (page or element)
 ├── pipeline/
 │   ├── queue.ts        # mapWithConcurrency
 │   ├── snapshot.ts     # discover + capture prod → baseline tables
@@ -176,7 +183,7 @@ v2 keys the image tables on `target_id`
 | --- | --- | --- |
 | `runs` | one per kept run (`output.keepRuns`, default 5) | AUTOINCREMENT ids. Timestamps, dev/prod base URLs, resolved config JSON, status; provenance: momus version, engine + version, config hash, baseline id + identity, allow flags, CI commit/branch/PR. |
 | `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, dimensions, `diff_pixels`, `diff_score`, `fail_score` (the gate that applied), `passed`, `status` (`ok`/`error`/`added`/`removed`), `error`. Unique on `(run_id, target_id, viewport)`. |
-| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, full `config_json`. Drives the compatibility gate and report provenance. |
+| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, `setup_json` (prod's redacted setup; NULL = none), full `config_json` (credentials redacted). Drives the compatibility gate and report provenance. |
 | `baseline_images` | one per `target × viewport` | `target_id`, `source`, `label`, `recipe_json` (canonical, sorted keys; NULL = no recipe), frozen prod PNG BLOBs plus `status`/`error`. Unique on `(target_id, viewport)`. |
 
 `run` inserts a run, then prunes to the newest `output.keepRuns` (0 = keep all)
@@ -205,6 +212,8 @@ built-in defaults**.
 | `stabilize` | `waitUntil`, `settleMs`, `timeoutMs`, `disableAnimations`, `mask`, `remove`. Gated against the baseline. |
 | `diff` | `threshold` (per-pixel sensitivity) and `failScore` (page-level gate) — two different knobs, see [ADR-0004](adr/0004-two-threshold-knobs.md). Plus per-path `overrides`. |
 | `concurrency` | `screenshots` (the `--concurrency` flag maps here) and `diffWorkers` (config only). |
+| `scenarios` | Targets with `steps` and an optional `capture.element` / `viewports`. Gated per target ([ADR-0029](adr/0029-scenarios-and-step-order.md)). |
+| `setup` | One login per side: shared or `{ dev, prod }`, each `steps` or `storageState`. Prod's is gated, redacted ([ADR-0030](adr/0030-setup-per-side.md)). |
 | `output` | `report` path, `db` path, `keepRuns` (default 5; 0 = unlimited). One DB per site is the intended shape. |
 
 ### Discovery order
@@ -238,6 +247,11 @@ message, surfaced in the report as an error card.
 - **Nothing discovered**: hard error — no sitemap, no urlList, and crawl off
   yields "no pages discovered".
 - **Worker crash**: pool marks that comparison errored and respawns.
+- **A step fails** (or `capture.element` matches nothing): that target's row is
+  `error`, naming the step. The run goes on ([ADR-0029](adr/0029-scenarios-and-step-order.md)).
+- **Setup fails**: no session means every capture would be a login screen, so it
+  is operational, not per-target: exit 2, naming the side and step
+  ([ADR-0030](adr/0030-setup-per-side.md)).
 - **Source fails to list during a run**: one error row (`source:<name>`); that
   source's targets are skipped and the run continues.
 
@@ -247,7 +261,7 @@ message, surfaced in the report as an error card.
 | --- | --- |
 | `0` | Ran; nothing fails the gate: every comparison passed, and any added/removed targets were allowed. |
 | `1` | Ran; at least one comparison failed the gate, errored, or is `added`/`removed` (unless allowed). An error counts as a regression signal, not a silent pass. |
-| `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict, DB from a newer momus, every prod capture failed. |
+| `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict, DB from a newer momus, every prod capture failed, setup failed. |
 
 `momus snapshot` exits `0` even when individual prod pages fail (they become
 error rows) and `2` on operational failure, including every capture failing.
@@ -268,6 +282,10 @@ testing behind the seams listed above.
   no browser.
 - **Browser-guarded tests** (`isBrowserInstalled() ? test : test.skip`) cover the
   handful of things that need a real page, like selector removal.
+- **Multi-engine tests** (steps, scenarios) loop over `TEST_ENGINES`. `bun run
+  test` runs them on chromium, then `test:engines` reruns them for firefox and
+  webkit, each in its own process ([ADR-0031](adr/0031-per-engine-test-processes.md)).
+  A new multi-engine file must be added to that script by hand.
 - **Integration** serves two tiny static sites from fixtures via `Bun.serve` and
   runs the real pipeline headless against them.
 

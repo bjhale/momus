@@ -1,6 +1,6 @@
 # RFC-0004: Scripted interactions, element capture, and auth
 
-**Status:** Accepted · **Milestone:** M3 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M3 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -167,15 +167,26 @@ None.
 
 ## Done when
 
-- [ ] Scenarios with the full step vocabulary work on all three engines.
-- [ ] Element capture works, and a missing element errors per target.
-- [ ] Setup logs in once per side; a setup failure exits 2 with the side and
+- [x] Scenarios with the full step vocabulary work on all three engines.
+- [x] Element capture works, and a missing element errors per target.
+- [x] Setup logs in once per side; a setup failure exits 2 with the side and
       failing step named.
-- [ ] Per-side `setup.dev` / `setup.prod` work, including steps on one side and
+- [x] Per-side `setup.dev` / `setup.prod` work, including steps on one side and
       `storageState` on the other; mixing shared and per-side keys, or defining
       only one side, is a config error.
-- [ ] Only the prod setup is gated, and the gate hash excludes `fill` values
+- [x] Only the prod setup is gated, and the gate hash excludes `fill` values
       and `storageState` contents.
-- [ ] Recipes and setup are gated for compatibility; old baselines still diff.
-- [ ] e2e: a fixture site with a login form and a toggled menu, logged in
+- [x] Recipes and setup are gated for compatibility; old baselines still diff.
+- [x] e2e: a fixture site with a login form and a toggled menu, logged in
       with different credentials on dev and prod.
+
+## Revisions
+
+- **2026-10-17: implemented** ([ADR-0029](../adr/0029-scenarios-and-step-order.md),
+  [ADR-0030](../adr/0030-setup-per-side.md)).
+- Setup's identity in the gate is **redacted canonical JSON**
+  (`snapshot.setup_json`), not a hash of the steps. It is readable, and neither a
+  secret nor a hash of one is stored. The no-secrets rule is unchanged.
+- `press` takes a key (on the page) or `[selector, key]`.
+- Selectors act on the **first** match, `capture.element` included.
+- Steps and the element screenshot each get their own `stabilize.timeoutMs`.

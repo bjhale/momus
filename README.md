@@ -100,8 +100,8 @@ a stored **prod baseline**:
   as its first step — discovering pages and screenshotting prod — then diffs dev
   against it and writes the report, all in one invocation.
 - **Baseline present**: `momus run` reuses it and captures **dev only** — prod is
-  **not** re-screenshotted (it is frozen). The run **fails fast (exit 2)** if the
-  live config's `browser`, `viewports` or `stabilize` settings differ from the
+  **not** re-screenshotted (it is frozen) and prod's `setup` login doesn't run. The run **fails fast (exit 2)** if the
+  live config's `browser`, `viewports`, `stabilize` or prod `setup` differ from the
   baseline's.
 - **Different prod origin**: if `prod` (or `--prod`) has a different origin
   (scheme, host, port) than the baseline was captured from, the run fails with
@@ -207,6 +207,10 @@ export default defineConfig({
   concurrency: { screenshots: 6, diffWorkers: 4 },
 
   output: { report: "momus-report.html", db: "momus.sqlite", keepRuns: 5 },  // keepRuns: 0 = keep all
+
+  // Pages in a particular state, and logging in. See "Scenarios" and "Setup" below.
+  scenarios: [{ id: "nav-open", path: "/", steps: [{ click: "button[aria-label=Menu]" }] }],
+  setup: { storageState: "auth.json" },
 });
 ```
 
@@ -292,6 +296,118 @@ Notes:
     bjhale/momus run --config momus.config.ts
   ```
 
+### Scenarios
+
+Pages render one state on load. A **scenario** puts a page in another state
+(menu open, form with errors) and screenshots it, on dev and prod alike:
+
+```ts
+scenarios: [
+  {
+    id: "nav-open",
+    path: "/",
+    steps: [
+      { click: "button[aria-label=Menu]" },
+      { waitFor: "nav[data-open]" },
+    ],
+    capture: { element: "nav" },   // optional; default is the full page
+    viewports: [375],              // optional; narrows the top-level viewports
+  },
+  {
+    id: "signup-errors",
+    path: "/signup",
+    steps: [{ click: "button[type=submit]" }, { waitFor: ".field-error" }],
+  },
+],
+```
+
+Each scenario is a target with id `scenarios:<id>`. Steps run in order after the
+page has loaded and settled, and before `mask` and `remove` are applied.
+Selectors use Playwright locator syntax (`text=`, `role=` work) and act on the
+**first** match.
+
+| Step | Argument | Does |
+| --- | --- | --- |
+| `click` | selector | Clicks the element. |
+| `hover` | selector | Hovers it. |
+| `fill` | `[selector, value]` | Types the value into the field. |
+| `press` | key, or `[selector, key]` | Presses a key on the page, or on that element. |
+| `select` | `[selector, value]` | Chooses the `<option>` with that value. |
+| `scroll` | selector | Scrolls the element into view. |
+| `waitFor` | selector, or `{ hidden: selector }` | Waits until it is visible (or hidden). |
+| `wait` | ms | Waits a fixed time. Discouraged; prefer `waitFor`. |
+| `evaluate` | string | Runs the JavaScript in the page. The escape hatch. |
+
+- **`capture.element`** screenshots the first matching element instead of the
+  page. If nothing matches, the target is an error row; it never falls back to
+  the full page. `mask` and `remove` still apply.
+- **`viewports`** narrows a scenario to some of the top-level `viewports`.
+- A step that fails, or times out after `stabilize.timeoutMs`, is an error row
+  for that scenario, naming the step number (from 1) and selector. The run goes on.
+- Scenarios ignore `discovery.include`, `exclude` and `maxPages`.
+- **Don't put credentials in scenario steps.** `goto` is not allowed there, and
+  `fill` and `select` values, `evaluate` scripts, and selectors are stored in
+  the `.sqlite` as-is.
+
+### Setup
+
+Most real apps sit behind a login. `setup` logs in once per side, before any
+capture, and every capture on that side reuses the session:
+
+```ts
+setup: {
+  steps: [
+    { goto: "/login" },
+    { fill: ["#email", Bun.env.MOMUS_USER!] },
+    { fill: ["#password", Bun.env.MOMUS_PASS!] },
+    { click: "button[type=submit]" },
+    { waitFor: "[data-user-menu]" },
+  ],
+  // or: storageState: "auth.json"   // a Playwright login session file
+},
+```
+
+`goto` is relative to each side's base URL, so one set of steps logs in to both.
+Dev and prod often need different logins, so `setup` can also be one per side:
+
+```ts
+setup: {
+  dev: {
+    steps: [
+      { goto: "/login" },
+      { fill: ["#email", Bun.env.MOMUS_DEV_USER!] },
+      { fill: ["#password", Bun.env.MOMUS_DEV_PASS!] },
+      { click: "button[type=submit]" },
+      { waitFor: "[data-user-menu]" },
+    ],
+  },
+  prod: { storageState: "prod-auth.json" },
+},
+```
+
+Different users can render different personalized content, such as a name in the
+header. That shows up as a diff. Use `mask` for it.
+
+- Each side is `steps` or `storageState`, chosen independently. A `storageState`
+  file must be JSON with `cookies` and `origins` arrays.
+- Shared and per-side keys can't be mixed, and a per-side `setup` must define
+  both sides.
+- Prod logs in only when momus captures a baseline. A `run` against a frozen
+  baseline never touches prod.
+- **A setup failure exits 2**, naming the side and step, for example
+  `setup (prod) step 3: fill "#password"`. Without a session every page would
+  capture the login screen.
+- **Where credentials may live.** Put them only in a setup `fill` value or a
+  `storageState` file. Setup `fill` values and `storageState` paths are redacted
+  before anything is stored, and the session is kept in memory only. Everything
+  else is stored in the `.sqlite` as-is: `goto` URLs, `evaluate` scripts,
+  `select` values, and every scenario step. (`requestHeaders` values are also
+  stored; that predates setup.)
+- Prod's setup is part of the baseline compatibility check; dev's isn't. Because
+  `fill` values are redacted, rotating a password doesn't invalidate the
+  baseline, and switching prod to a different user isn't caught: re-run
+  `momus snapshot` when you do.
+
 ## Exit codes
 
 `momus run` returns a process exit code so it can gate CI (`snapshot` and
@@ -301,7 +417,7 @@ Notes:
 | --- | --- |
 | `0` | All pages captured and passed the diff gate. |
 | `1` | At least one page failed the gate, errored, or is **added**/**removed** (unless allowed). A report is still written. |
-| `2` | Operational error that prevented the run: missing browser, bad config, a baseline conflict (different prod origin, browser, viewports or stabilize), a DB written by a newer momus, every prod capture failing, or another unrecoverable failure. |
+| `2` | Operational error that prevented the run: missing browser, bad config, a baseline conflict (different prod origin, browser, viewports or stabilize), a DB written by a newer momus, every prod capture failing, a failed `setup` login, or another unrecoverable failure. |
 
 ## How it works
 
