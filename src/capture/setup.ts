@@ -17,6 +17,13 @@ export class SetupError extends Error {
   }
 }
 
+/** The viewport the login runs at: the widest configured. Many sites hide the
+ * login form or its submit button behind a hamburger menu at mobile widths, so
+ * the first viewport (375 by default) would make setup steps fail to find it. */
+export function setupViewport(config: ResolvedConfig): number {
+  return Math.max(...config.viewports);
+}
+
 const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Log in once for one side and return the session every capture context for
@@ -54,7 +61,7 @@ export async function runSetup(
 
   let context: BrowserContext | undefined;
   try {
-    context = await newContext(browser, config.viewports[0]!, config.insecure);
+    context = await newContext(browser, setupViewport(config), config.insecure);
     const page = await context.newPage();
     await scopeRequestHeaders(page, config[side], config.requestHeaders);
     await runSteps(page, setup.steps!, { timeoutMs: config.stabilize.timeoutMs, baseUrl: config[side] });

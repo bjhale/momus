@@ -2,7 +2,7 @@
 import { test, expect } from "bun:test";
 import type { Browser } from "playwright-core";
 import { ConfigSchema } from "../../src/config/schema";
-import { runSetup, SetupError } from "../../src/capture/setup";
+import { runSetup, setupViewport, SetupError } from "../../src/capture/setup";
 
 const noBrowser = {} as Browser;
 const base = { dev: "https://dev.example.com", prod: "https://www.example.com" };
@@ -38,4 +38,9 @@ test("a storageState of the wrong shape fails setup once", async () => {
   const err = await runSetup(noBrowser, "dev", config, async () => "{}").catch((e) => e);
   expect(err).toBeInstanceOf(SetupError);
   expect(err.message).toBe('setup (dev) storageState "auth.json": expected { cookies: [], origins: [] }');
+});
+
+test("setup logs in at the widest viewport, whatever the configured order", () => {
+  expect(setupViewport(ConfigSchema.parse({ ...base, viewports: [375, 1440, 768] }))).toBe(1440);
+  expect(setupViewport(ConfigSchema.parse(base))).toBe(1280);
 });
