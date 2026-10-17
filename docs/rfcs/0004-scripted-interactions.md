@@ -49,7 +49,7 @@ scenarios: [
 ],
 ```
 
-- Each scenario is a target of kind `scenario`
+- Each scenario is a target from the `scenarios` source, with id `scenarios:<id>`
   ([RFC-0001](0001-targets.md)), run identically on dev and prod.
 - **The step vocabulary is deliberately small and declarative:** `click`,
   `hover`, `fill`, `press`, `select`, `scroll`, `waitFor` (a selector or a

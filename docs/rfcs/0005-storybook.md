@@ -34,8 +34,8 @@ storybook: {
 ```
 
 - **Discovery:** fetch `<base>/index.json` (Storybook 7+). Keep entries where
-  `type === "story"`. Target `id` is the story id; `label` is `title / name`;
-  `path` is `/<id>`, so the existing globs work.
+  `type === "story"`. Target `id` is `storybook:<story id>`, `label` is
+  `title / name`, and `path` is `/<story id>`, so the existing globs work.
 - **Capture:** load `iframe.html?id=<id>&viewMode=story`, wait for Storybook to
   report that the story rendered, then capture the story's root element (not
   the full page) by default.

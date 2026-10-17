@@ -39,6 +39,7 @@ Every serious visual regression tool has an "accept this change" step.
 momus approve [--run ID] [--target GLOB]... [--failed | --all]
 momus reject  [--run ID] [--target GLOB]...
 momus baseline status      # source, age, and per-target provenance
+momus baseline drop --target GLOB...   # delete baseline rows
 ```
 
 - `approve` copies the run's **dev** capture for each matching
@@ -47,6 +48,9 @@ momus baseline status      # source, age, and per-target provenance
 - `reject` records a decision without changing the baseline. The report shows
   it, and a later approval of the same capture refuses unless forced.
 - `--run` defaults to the latest run.
+- `baseline drop` deletes matching rows from the baseline. It is the only way
+  to retire a page short of a full snapshot, because pages are never reported
+  `removed` ([RFC-0001](0001-targets.md)).
 
 ### Baseline sources
 
@@ -56,10 +60,13 @@ momus baseline status      # source, age, and per-target provenance
   snapshot. A later `momus snapshot` asks whether to keep those approvals, and
   the flags `--keep-approved` and `--discard-approved` answer that question
   without the prompt.
-- With `"approved"`, there is no prod. A target with no approved baseline
-  produces a "new" status rather than an error: the report shows the dev
-  capture alone, and `approve` adopts it. In CI, "new" fails by default
-  (`--allow-new` to pass), so an unreviewed target can't slip through.
+- With `"approved"`, there is no prod. A target with no approved baseline is
+  `added`, using [RFC-0001](0001-targets.md)'s added and removed statuses
+  rather than an error. The report shows the dev capture alone, and `approve`
+  adopts it. It fails by default (`--allow-added` to pass), so an unreviewed
+  target can't slip through. On the first run of an approved-source project
+  every target is `added`, and `approve --all` is how the baseline is seeded.
+- Approving a `removed` target deletes its row from the baseline.
 
 ### Committing the baseline
 
@@ -100,9 +107,12 @@ PR. The `.sqlite` stays a cache that can be rebuilt from it.
 
 ## Done when
 
-- [ ] `approve`, `reject` and `baseline status` work against run history.
+- [ ] `approve`, `reject`, `baseline status` and `baseline drop` work against
+      run history.
 - [ ] `baseline.source: "approved"` works with no prod configured, including
-      the "new" status and `--allow-new`.
+      seeding the baseline with `approve --all` from an all-`added` first run.
+- [ ] Approving `added` and `removed` targets updates the baseline as
+      described.
 - [ ] Export, then import, round-trips a baseline byte-for-byte.
 - [ ] Approving an incompatible capture is refused.
 - [ ] ADRs record the source model and the export format.
