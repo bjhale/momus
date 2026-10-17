@@ -34,6 +34,15 @@ capture; emit one file a human can open.
   prod. Refresh with `momus snapshot`, or `momus run --snapshot` to do the
   re-capture and the diff in one invocation.
 
+A run's jobs come from `reconcile()` ([reconcile.ts](../src/targets/reconcile.ts))
+over the baseline and each source's live list. A live target with no baseline
+row is `added`, a baseline row its source no longer lists is `removed`, and both
+fail the gate unless allowed ([ADR-0022](adr/0022-added-and-removed-targets.md)).
+For pages the live list is the baseline's paths plus new `urlList` entries, so
+no prod access is needed. A target whose recipe differs from its stored one is
+an error row for that target alone
+([ADR-0023](adr/0023-per-target-recipe-gate.md)).
+
 Because the baseline is frozen, prod and dev are captured in separate phases
 rather than near-simultaneously. That temporal skew is inherent to a frozen
 baseline; selector masking is the mitigation.
@@ -99,6 +108,10 @@ src/
 ├── config/
 │   ├── schema.ts       # Zod schema, ResolvedConfig, defineConfig()
 │   └── load.ts         # read config file, apply CLI overrides
+├── targets/
+│   ├── target.ts       # Target, TargetSource, ids, viewport narrowing, canonical recipe JSON (pure)
+│   ├── pages.ts        # pagesSource: discovery for snapshots; baseline ∪ urlList for runs
+│   └── reconcile.ts    # baseline + live lists → jobs: compare / added / removed / error (pure)
 ├── discovery/
 │   ├── urllist.ts      # parseUrlList: lines → paths (pure)
 │   ├── sitemap.ts      # fetch/parse sitemap.xml + index recursion
@@ -139,14 +152,16 @@ suite run with no browser and no network.
 
 One SQLite file (`output.db`, default `momus.sqlite`) holds four tables. All are
 created with `CREATE TABLE IF NOT EXISTS` on open, so an older DB gains new
-tables automatically.
+tables automatically. A pre-targets DB has its image tables rebuilt in place on
+open, with `target_id = label = path` and `source = 'pages'`
+([ADR-0021](adr/0021-targets-and-source-provenance.md)).
 
 | Table | Rows | Purpose |
 | --- | --- | --- |
 | `runs` | one (`id = 1`) | Run metadata: timestamps, dev/prod base URLs, resolved config JSON, status. A table rather than a key/value blob so run history can be added later without a rewrite. |
-| `comparisons` | one per `path × viewport` | dev/prod/diff PNG BLOBs, dimensions, `diff_pixels`, `diff_score`, `passed`, `status` (`ok`/`error`), `error`. Unique on `(run_id, path, viewport)`. |
+| `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, dimensions, `diff_pixels`, `diff_score`, `passed`, `status` (`ok`/`error`/`added`/`removed`), `error`. Unique on `(run_id, target_id, viewport)`. |
 | `snapshot` | one (`id = 1`) | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, full `config_json`. Drives the compatibility gate and report provenance. |
-| `baseline_images` | one per `path × viewport` | Frozen prod PNG BLOBs plus `status`/`error`. Unique on `(path, viewport)`. |
+| `baseline_images` | one per `target × viewport` | `target_id`, `source`, `label`, `recipe_json` (canonical, sorted keys; NULL = no recipe), frozen prod PNG BLOBs plus `status`/`error`. Unique on `(target_id, viewport)`. |
 
 `run` truncates only `runs`/`comparisons`; the baseline tables survive.
 `snapshot` clears the baseline **and** the stale run rows (a new baseline
@@ -205,13 +220,15 @@ message, surfaced in the report as an error card.
 - **Nothing discovered**: hard error — no sitemap, no urlList, and crawl off
   yields "no pages discovered".
 - **Worker crash**: pool marks that comparison errored and respawns.
+- **Source fails to list during a run**: one error row (`source:<name>`); that
+  source's targets are skipped and the run continues.
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Ran; every comparison is `ok` and passed its gate. |
-| `1` | Ran; at least one comparison failed the gate **or** errored. An error counts as a regression signal, not a silent pass. |
+| `1` | Ran; at least one comparison failed the gate, errored, or is `added`/`removed` (unless allowed). An error counts as a regression signal, not a silent pass. |
 | `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict. |
 
 `momus snapshot` exits `0` even when individual prod pages fail (they become

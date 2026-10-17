@@ -32,6 +32,9 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0018](0018-progress-behind-a-seam.md) | Progress bars behind a three-method seam, rendered to stderr | 2026-07-05 |
 | [0019](0019-selectable-browser-engine.md) | Selectable browser engine, gated against the baseline | 2026-07-10 |
 | [0020](0020-run-snapshot-flag.md) | `momus run --snapshot` re-captures the baseline in one invocation | 2026-08-18 |
+| [0021](0021-targets-and-source-provenance.md) | Targets replace page paths; `source` is provenance, not behavior | 2026-10-16 |
+| [0022](0022-added-and-removed-targets.md) | Added/removed targets are their own statuses; the baseline determines page paths | 2026-10-16 |
+| [0023](0023-per-target-recipe-gate.md) | A target's recipe is gated per target | 2026-10-16 |
 
 ## Open questions
 

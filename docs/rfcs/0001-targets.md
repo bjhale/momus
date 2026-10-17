@@ -1,6 +1,6 @@
 # RFC-0001: Targets: generalize "page path"
 
-**Status:** Accepted · **Milestone:** M1 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M1 · **Created:** 2026-10-16 · **ADRs:** [0021](../adr/0021-targets-and-source-provenance.md), [0022](../adr/0022-added-and-removed-targets.md), [0023](../adr/0023-per-target-recipe-gate.md)
 
 ## Summary
 
@@ -187,3 +187,12 @@ the baseline: `scenarios` (the config) and `storybook` (`index.json`).
 - [ ] `added` and `removed` statuses are stored, shown in the report, fail the
       gate by default, honor `--allow-added` and `--allow-removed`, and are
       resolved by approval. Recorded in an ADR.
+
+## Revisions
+
+- **2026-10-16: implemented.** Changes from the accepted text:
+  - The `targets` id filter is deferred to [RFC-0004](0004-scripted-interactions.md),
+    the first source whose ids aren't paths.
+  - `maxPages` caps `urlList` additions, so the total stays within the cap.
+  - Resolving `added`/`removed` by approval ships with
+    [RFC-0003](0003-approval-workflow.md); until then, re-snapshot or allow them.

@@ -34,7 +34,7 @@ break things, and the changelog says so when they do.
 
 | Milestone | Theme | RFCs | Status |
 | --- | --- | --- | --- |
-| **M1** Foundations | Close the known correctness gaps. Keep run history. Version the DB. Generalize "page path" into a *target*. | [0001](docs/rfcs/0001-targets.md), [0002](docs/rfcs/0002-storage-and-run-history.md) | Not started |
+| **M1** Foundations | Close the known correctness gaps. Keep run history. Version the DB. Generalize "page path" into a *target*. | [0001](docs/rfcs/0001-targets.md), [0002](docs/rfcs/0002-storage-and-run-history.md) | In progress |
 | **M2** Approved baselines | Approve or reject changes; approved captures become the baseline. | [0003](docs/rfcs/0003-approval-workflow.md) | Not started |
 | **M3** Interactions & auth | Per-target steps, element screenshots, and a login/setup phase. | [0004](docs/rfcs/0004-scripted-interactions.md) | Not started |
 | **M4** Components | Storybook stories as targets. | [0005](docs/rfcs/0005-storybook.md) | Not started |

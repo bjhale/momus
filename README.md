@@ -117,6 +117,8 @@ invocation.
 | `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
 | `--browser NAME` | Engine to capture with (`chromium`\|`firefox`\|`webkit`); overrides `browser`. |
 | `--snapshot` | Re-capture the prod baseline before diffing, even when `output.db` already holds one (ignores the freeze). Equivalent to running `momus snapshot` first, in a single invocation. |
+| `--allow-added` | Don't fail the run for targets that are new since the baseline (`diff.allowAdded`). They are still reported. |
+| `--allow-removed` | Don't fail the run for baseline targets that are no longer listed (`diff.allowRemoved`). They are still reported. |
 
 CLI flags win over config-file values.
 
@@ -165,6 +167,8 @@ export default defineConfig({
     threshold: 0.1,   // per-pixel color sensitivity (pixelmatch)
     failScore: 0.01,  // fraction of changed pixels that fails a page
     overrides: [{ path: "/blog/**", failScore: 0.05 }],  // per-path gates
+    allowAdded: false,    // new-since-baseline targets fail unless true
+    allowRemoved: false,  // baseline targets no longer listed fail unless true
   },
 
   concurrency: { screenshots: 6, diffWorkers: 4 },
@@ -188,6 +192,13 @@ Notes:
   Override per run with `--max-pages N`. `dev` and `prod` are treated as
   origins — a path prefix on the base URL is not preserved when joining
   discovered paths.
+
+  On a `run` against a frozen baseline, `urlList` is re-read, and entries the
+  baseline lacks are captured on dev and reported **added** (they fail the gate
+  unless `--allow-added`), within the `maxPages` cap. Sitemap and crawl pages come
+  only from the baseline, so a page that is new on dev isn't seen until the next
+  `momus snapshot` unless it's listed in `urlList`. Removing a line from `urlList`
+  doesn't drop its baseline page.
 - **`failScore`** is the fraction of a page's pixels that may differ before the
   page fails. A page passes when its diff score is `<= failScore`. `overrides`
   apply a different gate to matching path globs.
@@ -250,7 +261,7 @@ Notes:
 | Code | Meaning |
 | --- | --- |
 | `0` | All pages captured and passed the diff gate. |
-| `1` | At least one page failed the gate **or** errored (e.g. a page failed to load or diff). A report is still written. |
+| `1` | At least one page failed the gate, errored, or is **added**/**removed** (unless allowed). A report is still written. |
 | `2` | Operational error that prevented the run (missing browser, bad config, unrecoverable failure). |
 
 ## How it works
