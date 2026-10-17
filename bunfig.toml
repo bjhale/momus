@@ -1,2 +1,3 @@
 [test]
-# Bun test config placeholder; coverage can be enabled later.
+# Bun ignores a `timeout` key here, so the default is raised in a preload.
+preload = ["./tests/setup.ts"]
