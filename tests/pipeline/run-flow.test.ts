@@ -2,6 +2,7 @@
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
 import { runFlow } from "../../src/pipeline/run-flow";
+import { ProdUnreachableError } from "../../src/pipeline/snapshot";
 import { openDb, readComparisons, latestRunId, readSnapshot, readBaselineImages, readRun, listRunIds } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
@@ -150,17 +151,20 @@ test("conflict on changed viewports returns ok:false and skips the diff", async 
 
 test("a prod error row from materialize yields a prod: error comparison", async () => {
   const db = openDb(":memory:");
+  // One page fails, one succeeds: a partial failure still freezes (an all-error
+  // capture is refused instead, see below).
   await runFlow({
     config: cfg(), db, now: "t1",
-    discover: async () => ["/broken"],
-    captureProd: async () => ({ ok: false, error: "404" }),
+    discover: async () => ["/broken", "/fine"],
+    captureProd: async (url) => url.endsWith("/broken") ? { ok: false, error: "404" } : { ok: true, png: png(150) },
     getDev: async () => ({ ok: true, png: png(150) }),
     diffPool,
   });
 
   const rows = readComparisons(db, latestRunId(db)!);
-  expect(rows[0]!.status).toBe("error");
-  expect(rows[0]!.error).toContain("prod: 404");
+  const broken = rows.find((r) => r.path === "/broken")!;
+  expect(broken.status).toBe("error");
+  expect(broken.error).toContain("prod: 404");
 });
 
 function fakeProgress() {
@@ -392,4 +396,17 @@ test("a re-snapshot keeps earlier runs: each run holds its own prod images", asy
   if (!first.ok) throw new Error("expected ok");
   const [row] = readComparisons(db, first.runId);
   expect(Array.from(row!.prodImage!)).toEqual(Array.from(png(100)));
+});
+
+test("an all-error materialize doesn't freeze: no baseline, no run, ProdUnreachableError", async () => {
+  const db = openDb(":memory:");
+  await expect(runFlow({
+    config: cfg(), db, now: "t1",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: false, error: "ECONNREFUSED" }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  })).rejects.toBeInstanceOf(ProdUnreachableError);
+  expect(readSnapshot(db)).toBeNull();
+  expect(listRunIds(db)).toEqual([]);
 });

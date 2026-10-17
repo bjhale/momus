@@ -1,7 +1,7 @@
 // tests/pipeline/snapshot.test.ts
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
-import { snapshotPipeline } from "../../src/pipeline/snapshot";
+import { snapshotPipeline, ProdUnreachableError } from "../../src/pipeline/snapshot";
 import { openDb, readSnapshot, readBaselineImages, startRun, listRunIds } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
 import type { Target, TargetSource } from "../../src/targets/target";
@@ -153,4 +153,45 @@ test("a snapshot leaves run history alone", async () => {
   const id = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "s" });
   await snapshotPipeline({ config, db, createdAt: "t", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(1) }) });
   expect(listRunIds(db)).toEqual([id]);
+});
+
+test("every capture failing saves nothing and throws ProdUnreachableError", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [375, 1280] });
+  const db = openDb(":memory:");
+  const run = snapshotPipeline({
+    config, db, createdAt: "t", discover: async () => ["/", "/a"],
+    captureFn: async () => ({ ok: false, error: "net::ERR_CONNECTION_REFUSED" }),
+  });
+  await expect(run).rejects.toBeInstanceOf(ProdUnreachableError);
+  await expect(run).rejects.toThrow(/unreachable.*4 of 4.*ERR_CONNECTION_REFUSED/s);
+  expect(readSnapshot(db)).toBeNull();
+  expect(readBaselineImages(db).length).toBe(0);
+});
+
+test("an all-error re-snapshot keeps the previous baseline byte for byte", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(50) }) });
+  const before = readSnapshot(db)!;
+  await expect(snapshotPipeline({
+    config, db, createdAt: "t2", discover: async () => ["/", "/new"],
+    captureFn: async () => ({ ok: false, error: "timeout" }),
+  })).rejects.toBeInstanceOf(ProdUnreachableError);
+  expect(readSnapshot(db)).toEqual(before);
+  const rows = readBaselineImages(db);
+  expect(rows.map((r) => r.path)).toEqual(["/"]);
+  expect(Array.from(rows[0]!.image!)).toEqual(Array.from(png(50)));
+});
+
+test("a capture function that throws rolls the baseline back too", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(50) }) });
+  await expect(snapshotPipeline({
+    config, db, createdAt: "t2", discover: async () => ["/"],
+    captureFn: async () => { throw new Error("browser crashed"); },
+  })).rejects.toThrow("browser crashed");
+  expect(readSnapshot(db)!.createdAt).toBe("t1");
+  // The connection is usable afterwards: no transaction left open.
+  expect(() => db.exec("BEGIN; COMMIT;")).not.toThrow();
 });
