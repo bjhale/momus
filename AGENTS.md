@@ -88,6 +88,11 @@ trade-off, a rejected alternative, a deliberate constraint — add an ADR in
 accepted: supersede with a new one and cross-link, never edit history.
 `docs/superpowers/` is gitignored scratch space, not documentation.
 
+Planned work is in [ROADMAP.md](ROADMAP.md), with one RFC per feature in
+[docs/rfcs/](docs/rfcs/). RFCs are editable proposals; ADRs are the decisions
+they leave behind. If a task touches a roadmap feature, read its RFC first, and
+don't build anything that contradicts an RFC's "Compatibility" section.
+
 ## Known gaps
 
 Real, unresolved, and easy to trip over:
