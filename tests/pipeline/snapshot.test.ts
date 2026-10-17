@@ -4,6 +4,7 @@ import { PNG } from "pngjs";
 import { snapshotPipeline } from "../../src/pipeline/snapshot";
 import { openDb, readSnapshot, readBaselineImages } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
+import type { Target, TargetSource } from "../../src/targets/target";
 
 function png(v: number): Uint8Array {
   const p = new PNG({ width: 4, height: 4 }); p.data.fill(v);
@@ -94,4 +95,54 @@ test("snapshotPipeline reports progress: start('Capturing prod', total), tick pe
   expect(rec.starts).toEqual([{ total: 2, label: "Capturing prod" }]);
   expect(rec.ticks).toBe(2);
   expect(rec.stops).toBe(1);
+});
+
+function fakeSource(targets: Target[] | (() => Promise<Target[]>)): TargetSource {
+  const list = typeof targets === "function" ? targets : async () => targets;
+  return { name: "scenarios", listForSnapshot: list, listLive: list };
+}
+const scenario = (id: string, extra: Partial<Target> = {}): Target => ({
+  id, source: "scenarios", label: `Label ${id}`, path: "/",
+  url: { dev: "https://dev.example.com/", prod: "https://www.example.com/" }, ...extra,
+});
+
+test("extra sources are captured with identity, recipe and per-target viewports", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [375, 1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({
+    config, db, createdAt: "t",
+    discover: async () => ["/"],
+    sources: [fakeSource([scenario("scenarios:nav", { recipe: { b: 1, a: 2 }, viewports: [375] })])],
+    captureFn: async () => ({ ok: true, png: png(100) }),
+  });
+  const rows = readBaselineImages(db);
+  expect(rows.map((r) => [r.targetId, r.viewport])).toEqual([["/", 375], ["/", 1280], ["scenarios:nav", 375]]);
+  const sc = rows.find((r) => r.targetId === "scenarios:nav")!;
+  expect([sc.source, sc.label, sc.recipeJson]).toEqual(["scenarios", "Label scenarios:nav", '{"a":2,"b":1}']);
+  expect(rows.find((r) => r.targetId === "/")!.recipeJson).toBeNull();
+});
+
+test("a bad target id fails the snapshot before the old baseline is cleared", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(100) }) });
+  await expect(snapshotPipeline({
+    config, db, createdAt: "t2", discover: async () => ["/"],
+    sources: [fakeSource([scenario("nav")])], // missing the "scenarios:" prefix
+    captureFn: async () => ({ ok: true, png: png(100) }),
+  })).rejects.toThrow('must start with "scenarios:"');
+  expect(readSnapshot(db)!.createdAt).toBe("t1");
+  expect(readBaselineImages(db).length).toBe(1);
+});
+
+test("a source that fails to list fails the snapshot and keeps the old baseline", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(100) }) });
+  await expect(snapshotPipeline({
+    config, db, createdAt: "t2", discover: async () => ["/"],
+    sources: [fakeSource(async () => { throw new Error("index.json unreachable"); })],
+    captureFn: async () => ({ ok: true, png: png(100) }),
+  })).rejects.toThrow("index.json unreachable");
+  expect(readSnapshot(db)!.createdAt).toBe("t1");
 });
