@@ -249,3 +249,66 @@ test("runPipeline ticks even for error jobs", async () => {
   expect(rec.ticks).toBe(2); // both the ok job and the throwing job ticked
   expect(rec.stops).toBe(1);
 });
+
+const cfg1280 = () => ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+const pool = { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} };
+const never = async (): Promise<never> => { throw new Error("must not be called"); };
+
+test("target identity on a job is persisted on its comparison", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg1280(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => [{ targetId: "scenarios:nav", source: "scenarios", label: "Nav", path: "/",
+      viewport: 1280, devUrl: "https://dev.example.com/", prodUrl: "https://www.example.com/" }],
+    getDev: okPng, getProd: okPng, diffPool: pool,
+  });
+  const r = readComparisons(db, 1)[0]!;
+  expect([r.targetId, r.source, r.label, r.status]).toEqual(["scenarios:nav", "scenarios", "Nav", "ok"]);
+});
+
+test("action error: no capture, error row with the job's message", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg1280(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => [{ path: "/", viewport: 1280, devUrl: "", prodUrl: "", action: "error", error: "recipe changed" }],
+    getDev: never, getProd: never, diffPool: pool,
+  });
+  const r = readComparisons(db, 1)[0]!;
+  expect([r.status, r.error]).toEqual(["error", "recipe changed"]);
+});
+
+test("action added: captures dev only, stores it with status added", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg1280(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => [{ path: "/new", viewport: 1280, devUrl: "https://dev.example.com/new", prodUrl: "", action: "added" }],
+    getDev: okPng, getProd: never, diffPool: pool,
+  });
+  const r = readComparisons(db, 1)[0]!;
+  expect(r.status).toBe("added");
+  expect(r.devImage).toBeInstanceOf(Uint8Array);
+  expect(r.passed).toBeUndefined();
+});
+
+test("action added with a failing dev capture is an error", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg1280(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => [{ path: "/new", viewport: 1280, devUrl: "x", prodUrl: "", action: "added" }],
+    getDev: async () => ({ ok: false, error: "boom" }), getProd: never, diffPool: pool,
+  });
+  const r = readComparisons(db, 1)[0]!;
+  expect([r.status, r.error]).toEqual(["error", "dev: boom"]);
+});
+
+test("action removed: reads the baseline only, stores it with status removed", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg1280(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => [{ path: "/gone", viewport: 1280, devUrl: "", prodUrl: "https://www.example.com/gone", action: "removed" }],
+    getDev: never, getProd: okPng, diffPool: pool,
+  });
+  const r = readComparisons(db, 1)[0]!;
+  expect(r.status).toBe("removed");
+  expect(r.prodImage).toBeInstanceOf(Uint8Array);
+});

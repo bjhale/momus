@@ -4,6 +4,7 @@ import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
 import type { Progress } from "../progress";
+import type { TargetSourceName } from "../targets/target";
 import { startRun, saveComparison, finishRun } from "../store/db";
 import { mapWithConcurrency } from "./queue";
 import { resolveFailScore, passed } from "./verdict";
@@ -13,12 +14,24 @@ export interface DiffPoolLike {
   close(): Promise<void>;
 }
 
-/** One unit of comparison work: a path at a viewport, with both side URLs resolved. */
+/** What runPipeline does with a job. reconcile() decides; capture and diff
+ * never look at `source` (RFC-0001). */
+export type JobAction = "compare" | "added" | "removed" | "error";
+
+/** One unit of comparison work: a target at a viewport, with both side URLs
+ * resolved. Identity and action are optional and default to a page compare
+ * (id = label = path, source = pages), which is the pre-targets job shape. */
 export interface Job {
   path: string;
   viewport: number;
   devUrl: string;
   prodUrl: string;
+  targetId?: string;
+  source?: TargetSourceName;
+  label?: string;
+  action?: JobAction;
+  /** Message for action "error". */
+  error?: string;
 }
 
 export interface RunPipelineArgs {
@@ -54,11 +67,35 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
 
     await mapWithConcurrency(jobs, config.concurrency.screenshots, async (job) => {
       const rec: ComparisonRecord = {
+        targetId: job.targetId ?? job.path, source: job.source ?? "pages", label: job.label ?? job.path,
         path: job.path, viewport: job.viewport, devUrl: job.devUrl, prodUrl: job.prodUrl, status: "ok",
       };
       // Per-job guard: an unexpected throw from a seam must be recorded as an
       // error comparison, never propagated — one bad page must not abort the run.
       try {
+        const action = job.action ?? "compare";
+        if (action === "error") {
+          rec.status = "error"; rec.error = job.error ?? "unknown error";
+          saveComparison(db, runId, rec);
+          return;
+        }
+        if (action === "removed") {
+          // Gone from the live list: nothing to capture. Show what the baseline held.
+          const prod = await args.getProd(job);
+          rec.status = "removed";
+          if (prod.ok) rec.prodImage = prod.png; else rec.error = `prod: ${prod.error}`;
+          saveComparison(db, runId, rec);
+          return;
+        }
+        if (action === "added") {
+          // No baseline to diff against: capture dev so a reviewer can see it.
+          const dev = await args.getDev(job);
+          if (dev.ok) { rec.status = "added"; rec.devImage = dev.png; }
+          else { rec.status = "error"; rec.error = `dev: ${dev.error}`; }
+          saveComparison(db, runId, rec);
+          return;
+        }
+
         const [dev, prod] = await Promise.all([args.getDev(job), args.getProd(job)]);
 
         if (!dev.ok || !prod.ok) {
