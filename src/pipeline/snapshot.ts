@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult } from "../types";
 import type { Progress } from "../progress";
-import { clearBaseline, clearRuns, saveBaselineImage, writeSnapshot } from "../store/db";
+import { clearBaseline, saveBaselineImage, writeSnapshot } from "../store/db";
 import { mapWithConcurrency } from "./queue";
 import { pagesSource } from "../targets/pages";
 import { canonicalJson, checkTargetIds, expandViewports, type TargetSource } from "../targets/target";
@@ -29,10 +29,9 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
   const targets = (await Promise.all(sources.map((s) => s.listForSnapshot()))).flat();
   checkTargetIds(targets);
 
-  // Listing succeeded — safe to replace the old baseline and invalidate any
-  // prior dev-run results (they were diffed against the now-replaced baseline).
+  // Listing succeeded — safe to replace the old baseline. Runs are kept: each
+  // holds its own prod images and records which baseline it used (ADR-0025).
   clearBaseline(db);
-  clearRuns(db);
 
   const jobs = targets.flatMap((target) =>
     expandViewports(target, config.viewports).map((viewport) => ({ target, viewport })));

@@ -1,8 +1,9 @@
 // tests/pipeline/run.test.ts
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
-import { runPipeline, type Job } from "../../src/pipeline/run";
-import { openDb, readComparisons } from "../../src/store/db";
+import { runPipeline, configHash, type Job } from "../../src/pipeline/run";
+import { openDb, readComparisons, readRun } from "../../src/store/db";
+import { MOMUS_VERSION } from "../../src/version";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
 
@@ -15,7 +16,7 @@ const okDiff = (a: Uint8Array): DiffResponse =>
   ({ id: 1, ok: true, width: 4, height: 4, diffPixels: 0, diffScore: 0, diffPng: a });
 
 function runStatus(db: ReturnType<typeof openDb>): string {
-  const row = db.query("SELECT status FROM runs WHERE id = 1").get() as { status: string } | null;
+  const row = db.query("SELECT status FROM runs ORDER BY id DESC LIMIT 1").get() as { status: string } | null;
   return row!.status;
 }
 
@@ -311,4 +312,70 @@ test("action removed: reads the baseline only, stores it with status removed", a
   const r = readComparisons(db, 1)[0]!;
   expect(r.status).toBe("removed");
   expect(r.prodImage).toBeInstanceOf(Uint8Array);
+});
+
+test("runPipeline returns the new run id and records provenance", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280], browser: "firefox", diff: { allowAdded: true } });
+  const db = openDb(":memory:");
+  const id = await runPipeline({
+    config, db, startedAt: "s", finishedAt: "f",
+    engineVersion: "140.0", baseline: { id: 3, identityJson: '{"b":1}' }, ci: { commit: "abc", pr: "7" },
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: okPng, getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+  });
+  const run = readRun(db, id)!;
+  expect(run.momusVersion).toBe(MOMUS_VERSION);
+  expect([run.engine, run.engineVersion, run.configHash]).toEqual(["firefox", "140.0", configHash(config)]);
+  expect([run.baselineId, run.baselineJson]).toEqual([3, '{"b":1}']);
+  expect([run.allowAdded, run.allowRemoved]).toEqual([true, false]);
+  expect(run.ci).toEqual({ commit: "abc", pr: "7" });
+});
+
+test("a second runPipeline keeps the first run's rows", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  const args = {
+    config, db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]), getDev: okPng, getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+  };
+  const a = await runPipeline(args);
+  const b = await runPipeline(args);
+  expect(b).toBeGreaterThan(a);
+  expect(readComparisons(db, a).length).toBe(1);
+  expect(readComparisons(db, b).length).toBe(1);
+});
+
+test("a compared row stores the failScore that applied, including overrides", async () => {
+  const config = ConfigSchema.parse({
+    dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280],
+    diff: { failScore: 0.01, overrides: [{ path: "/blog/**", failScore: 0.2 }] },
+  });
+  const db = openDb(":memory:");
+  const id = await runPipeline({
+    config, db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/", "/blog/x"], [1280]), getDev: okPng, getProd: okPng,
+    diffPool: { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} },
+  });
+  const byPath = Object.fromEntries(readComparisons(db, id).map((r) => [r.path, r.failScore]));
+  expect(byPath).toEqual({ "/": 0.01, "/blog/x": 0.2 });
+});
+
+// Rebuild every plain object with its keys reversed, at every depth.
+function reverseKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(reverseKeys);
+  if (v !== null && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(o).reverse().map((k) => [k, reverseKeys(o[k])]));
+  }
+  return v;
+}
+
+test("configHash ignores key order", () => {
+  const a = ConfigSchema.parse({ dev: "https://d.example.com", prod: "https://p.example.com", viewports: [1] });
+  const b = reverseKeys(a) as typeof a;
+  expect(JSON.stringify(b)).not.toBe(JSON.stringify(a));
+  expect(configHash(b)).toBe(configHash(a));
+  expect(configHash(a)).toMatch(/^[0-9a-f]{64}$/);
 });

@@ -52,6 +52,9 @@ export const ConfigSchema = z.object({
   output: z.object({
     report: z.string().default("momus-report.html"),
     db: z.string().default("momus.sqlite"),
+    // Runs kept in output.db; 0 = unlimited. Small by default because the file
+    // is often committed (RFC-0002, ADR-0025).
+    keepRuns: z.number().int().nonnegative().default(5),
   }).default({}),
 });
 

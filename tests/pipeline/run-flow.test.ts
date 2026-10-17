@@ -2,7 +2,7 @@
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
 import { runFlow } from "../../src/pipeline/run-flow";
-import { openDb, readComparisons, latestRunId, readSnapshot, readBaselineImages } from "../../src/store/db";
+import { openDb, readComparisons, latestRunId, readSnapshot, readBaselineImages, readRun, listRunIds } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
 import type { Progress } from "../../src/progress";
@@ -30,7 +30,7 @@ test("no baseline: materializes one AND diffs in a single invocation", async () 
     diffPool,
   });
 
-  expect(res).toEqual({ ok: true, materialized: true, createdAt: "2026-07-04T10:00:00Z" });
+  expect(res).toEqual({ ok: true, materialized: true, createdAt: "2026-07-04T10:00:00Z", runId: expect.any(Number) });
   // Baseline materialized...
   expect(readSnapshot(db)!.prodBaseUrl).toBe("https://www.example.com");
   expect(readBaselineImages(db).length).toBe(2);
@@ -58,7 +58,7 @@ test("second run freezes: no discovery, no prod re-capture, baseline reused", as
     diffPool,
   });
 
-  expect(res).toEqual({ ok: true, materialized: false, createdAt: "t1" });
+  expect(res).toEqual({ ok: true, materialized: false, createdAt: "t1", runId: expect.any(Number) });
   const rows = readComparisons(db, latestRunId(db)!);
   expect(rows.length).toBe(1);
   expect(rows[0]!.status).toBe("ok");
@@ -90,7 +90,7 @@ test("forceSnapshot: re-materializes even when a baseline exists (re-discovers +
     diffPool,
   });
 
-  expect(res).toEqual({ ok: true, materialized: true, createdAt: "t2" });
+  expect(res).toEqual({ ok: true, materialized: true, createdAt: "t2", runId: expect.any(Number) });
   expect(discovered).toBe(true);
   expect(prodCaptured).toBe(true);
   // Baseline replaced: now 2 paths, snapshot re-dated, prod BLOB is the new png.
@@ -331,4 +331,65 @@ test("a changed recipe errors that target only", async () => {
   expect(rows["scenarios:a"]!.error).toContain("recipe changed");
   expect(rows["scenarios:b"]!.status).toBe("ok");
   expect(rows["/"]!.status).toBe("ok");
+});
+
+test("runs accumulate across invocations and record the baseline they used", async () => {
+  const db = openDb(":memory:");
+  const go = (now: string) => runFlow({
+    config: cfg(), db, now, engineVersion: "131.0",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+  const r1 = await go("t1");
+  const r2 = await go("t2");
+  if (!r1.ok || !r2.ok) throw new Error("expected ok");
+  expect(r2.runId).toBeGreaterThan(r1.runId);
+  const snap = readSnapshot(db)!;
+  const run = readRun(db, r2.runId)!;
+  expect(run.baselineId).toBe(snap.id);
+  expect(JSON.parse(run.baselineJson!)).toEqual({
+    browser: "chromium", createdAt: "t1", id: snap.id, prodBaseUrl: "https://www.example.com",
+    stabilize: snap.stabilize, viewports: [1280],
+  });
+  expect(run.engineVersion).toBe("131.0");
+});
+
+test("runFlow prunes to output.keepRuns after each run", async () => {
+  const db = openDb(":memory:");
+  const ids: number[] = [];
+  for (const now of ["t1", "t2", "t3"]) {
+    const r = await runFlow({
+      config: cfg({ output: { keepRuns: 2 } }), db, now,
+      discover: async () => ["/"],
+      captureProd: async () => ({ ok: true, png: png(100) }),
+      getDev: async () => ({ ok: true, png: png(150) }),
+      diffPool,
+    });
+    if (!r.ok) throw new Error("expected ok");
+    ids.push(r.runId);
+  }
+  expect(listRunIds(db)).toEqual(ids.slice(1));
+});
+
+test("a re-snapshot keeps earlier runs: each run holds its own prod images", async () => {
+  const db = openDb(":memory:");
+  const first = await runFlow({
+    config: cfg(), db, now: "t1",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+  await runFlow({
+    config: cfg(), db, now: "t2", forceSnapshot: true,
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(200) }),
+    getDev: async () => ({ ok: true, png: png(150) }),
+    diffPool,
+  });
+  if (!first.ok) throw new Error("expected ok");
+  const [row] = readComparisons(db, first.runId);
+  expect(Array.from(row!.prodImage!)).toEqual(Array.from(png(100)));
 });

@@ -122,3 +122,10 @@ test("diff.allowAdded / allowRemoved default to false", () => {
   expect(c.diff.allowAdded).toBe(false);
   expect(c.diff.allowRemoved).toBe(false);
 });
+
+test("output.keepRuns defaults to 5 and accepts 0 (unlimited)", () => {
+  const base = { dev: "https://d.example.com", prod: "https://p.example.com" };
+  expect(ConfigSchema.parse(base).output.keepRuns).toBe(5);
+  expect(ConfigSchema.parse({ ...base, output: { keepRuns: 0 } }).output.keepRuns).toBe(0);
+  expect(() => ConfigSchema.parse({ ...base, output: { keepRuns: -1 } })).toThrow();
+});

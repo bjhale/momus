@@ -54,7 +54,7 @@ maybe("first run materializes prod baseline; second run freezes (no prod re-capt
       });
     } finally { dev1.stop(); }
 
-    expect(res).toEqual({ ok: true, materialized: true, createdAt: "2026-07-04T10:00:00Z" });
+    expect(res).toEqual({ ok: true, materialized: true, createdAt: "2026-07-04T10:00:00Z", runId: expect.any(Number) });
     expect(readBaselineImages(db).length).toBe(2);
     expect(readComparisons(db, latestRunId(db)!).every((r) => r.passed)).toBe(true); // dev == prod
 
@@ -74,8 +74,9 @@ maybe("first run materializes prod baseline; second run freezes (no prod re-capt
       });
     } finally { dev2.stop(); }
 
-    expect(res2).toEqual({ ok: true, materialized: false, createdAt: "2026-07-04T10:00:00Z" });
-    const rows = readComparisons(db, latestRunId(db)!);
+    expect(res2).toEqual({ ok: true, materialized: false, createdAt: "2026-07-04T10:00:00Z", runId: expect.any(Number) });
+    if (!res2.ok) throw new Error("expected ok");
+    const rows = readComparisons(db, res2.runId);
     expect(rows.find((r) => r.path === "/")!.passed).toBe(true);
     expect(rows.find((r) => r.path === "/about")!.passed).toBe(false); // changed vs frozen prod
     expect(readSnapshot(db)!.createdAt).toBe("2026-07-04T10:00:00Z"); // baseline preserved

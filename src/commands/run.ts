@@ -75,9 +75,9 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   }
 
   // Read comparisons once and reuse for both the report and the exit code.
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, result.runId);
   // config.diff carries allowAdded/allowRemoved; one gate for report and exit code.
-  await writeReport(db, 1, config.output.report, rows, config.diff);
+  await writeReport(db, result.runId, config.output.report, rows, config.diff);
   const code = exitCodeFor(rows, config.diff);
   // Make freezing explicit: say whether prod was captured now or reused.
   if (result.materialized) {

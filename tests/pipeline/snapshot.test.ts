@@ -2,7 +2,7 @@
 import { test, expect } from "bun:test";
 import { PNG } from "pngjs";
 import { snapshotPipeline } from "../../src/pipeline/snapshot";
-import { openDb, readSnapshot, readBaselineImages } from "../../src/store/db";
+import { openDb, readSnapshot, readBaselineImages, startRun, listRunIds } from "../../src/store/db";
 import { ConfigSchema } from "../../src/config/schema";
 import type { Target, TargetSource } from "../../src/targets/target";
 
@@ -145,4 +145,12 @@ test("a source that fails to list fails the snapshot and keeps the old baseline"
     captureFn: async () => ({ ok: true, png: png(100) }),
   })).rejects.toThrow("index.json unreachable");
   expect(readSnapshot(db)!.createdAt).toBe("t1");
+});
+
+test("a snapshot leaves run history alone", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  const id = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "s" });
+  await snapshotPipeline({ config, db, createdAt: "t", discover: async () => ["/"], captureFn: async () => ({ ok: true, png: png(1) }) });
+  expect(listRunIds(db)).toEqual([id]);
 });

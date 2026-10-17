@@ -3,13 +3,13 @@ import type { Database } from "bun:sqlite";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult } from "../types";
 import type { Progress } from "../progress";
-import { readSnapshot, readBaselineImages, type BaselineImageRow } from "../store/db";
+import { readSnapshot, readBaselineImages, pruneRuns, type BaselineImageRow, type SnapshotMeta, type CiMetadata } from "../store/db";
 import { snapshotPipeline } from "./snapshot";
 import { baselineConflict } from "./compat";
 import { runPipeline, type Job, type DiffPoolLike } from "./run";
 import { pagesSource } from "../targets/pages";
 import { reconcile } from "../targets/reconcile";
-import { checkTargetIds, type Target, type TargetSource, type TargetSourceName } from "../targets/target";
+import { canonicalJson, checkTargetIds, type Target, type TargetSource, type TargetSourceName } from "../targets/target";
 
 export interface RunFlowArgs {
   config: ResolvedConfig;
@@ -34,11 +34,22 @@ export interface RunFlowArgs {
    * `forceSnapshot`, not `snapshot`, so it can't be misread as the baseline row
    * this flow reads below. */
   forceSnapshot?: boolean;
+  engineVersion?: string;
+  ci?: CiMetadata;
 }
 
 export type RunFlowResult =
-  | { ok: true; materialized: boolean; createdAt: string }
+  | { ok: true; materialized: boolean; createdAt: string; runId: number }
   | { ok: false; conflict: string };
+
+/** What a run records about its baseline. Everything that decides whether the
+ * baseline is diffable, plus its id and age; not the full config. */
+export function baselineIdentityJson(s: SnapshotMeta): string {
+  return canonicalJson({
+    id: s.id, createdAt: s.createdAt, prodBaseUrl: s.prodBaseUrl,
+    browser: s.browser ?? "chromium", viewports: s.viewports, stabilize: s.stabilize,
+  })!;
+}
 
 /** Ensure a prod baseline exists (capturing one in-invocation if absent), then
  * diff live dev against it. Freeze semantics: a baseline, once materialized, is
@@ -52,8 +63,6 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
     // No baseline yet, or `--snapshot` forced a re-capture — materialize one now
     // (discover + capture prod). Same ordering guarantees as `momus snapshot`:
     // discovery runs before any clear.
-    // snapshotPipeline clears runs/comparisons; runPipeline's startRun clears
-    // them again below. Benign double-clear — nothing is written in between.
     await snapshotPipeline({
       config, db, createdAt: args.now,
       discover: args.discover,
@@ -76,8 +85,10 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
     ...(args.sources ?? []),
   ];
 
-  await runPipeline({
+  const runId = await runPipeline({
     config, db, startedAt: args.now, prodBaseUrl: snapshot.prodBaseUrl,
+    engineVersion: args.engineVersion, ci: args.ci,
+    baseline: { id: snapshot.id!, identityJson: baselineIdentityJson(snapshot) },
     listJobs: async (): Promise<Job[]> => {
       const live = new Map<TargetSourceName, Target[]>();
       const failed = new Map<TargetSourceName, string>();
@@ -105,6 +116,8 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
     diffPool: args.diffPool,
     progress: args.progress,
   });
+  // After the run, so the run just written always survives.
+  pruneRuns(db, config.output.keepRuns);
 
-  return { ok: true, materialized, createdAt: snapshot.createdAt };
+  return { ok: true, materialized, createdAt: snapshot.createdAt, runId };
 }

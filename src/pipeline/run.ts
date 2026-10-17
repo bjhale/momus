@@ -1,13 +1,21 @@
 // src/pipeline/run.ts
 import type { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
 import type { Progress } from "../progress";
-import type { TargetSourceName } from "../targets/target";
-import { startRun, saveComparison, finishRun } from "../store/db";
+import { canonicalJson, type TargetSourceName } from "../targets/target";
+import { startRun, saveComparison, finishRun, type CiMetadata } from "../store/db";
+import { MOMUS_VERSION } from "../version";
 import { mapWithConcurrency } from "./queue";
 import { resolveFailScore, passed } from "./verdict";
+
+/** sha256 of the resolved config with sorted keys, so two runs with the same
+ * effective config hash alike regardless of how the file was written. */
+export function configHash(config: ResolvedConfig): string {
+  return createHash("sha256").update(canonicalJson(config)!).digest("hex");
+}
 
 export interface DiffPoolLike {
   submit(a: Uint8Array, b: Uint8Array, threshold: number): Promise<DiffResponse>;
@@ -52,13 +60,23 @@ export interface RunPipelineArgs {
   diffPool: DiffPoolLike;
   /** Optional progress reporter for the capture+diff phase. */
   progress?: Progress;
+  /** Browser build that captured dev, e.g. "131.0.6778.33". */
+  engineVersion?: string;
+  /** The baseline these jobs diff against: id plus identity JSON. */
+  baseline?: { id: number; identityJson: string };
+  ci?: CiMetadata;
 }
 
-export async function runPipeline(args: RunPipelineArgs): Promise<void> {
+export async function runPipeline(args: RunPipelineArgs): Promise<number> {
   const { config, db } = args;
   const runId = startRun(db, {
     devBaseUrl: config.dev, prodBaseUrl: args.prodBaseUrl ?? config.prod,
     configJson: JSON.stringify(config), startedAt: args.startedAt,
+    momusVersion: MOMUS_VERSION, engine: config.browser, engineVersion: args.engineVersion,
+    configHash: configHash(config),
+    baselineId: args.baseline?.id, baselineJson: args.baseline?.identityJson,
+    allowAdded: config.diff.allowAdded, allowRemoved: config.diff.allowRemoved,
+    ci: args.ci,
   });
 
   try {
@@ -116,6 +134,7 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
         rec.diffImage = diff.diffPng; rec.width = diff.width; rec.height = diff.height;
         rec.diffPixels = diff.diffPixels; rec.diffScore = diff.diffScore;
         const failScore = resolveFailScore(job.path, config.diff.failScore, config.diff.overrides);
+        rec.failScore = failScore;
         rec.passed = passed(diff.diffScore!, failScore);
         saveComparison(db, runId, rec);
       } catch (err) {
@@ -137,4 +156,5 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
   // diffPool.close() is intentionally NOT called here — the CLI caller owns the
   // pool lifecycle, symmetric with owning listJobs/getDev/getProd.
   finishRun(db, runId, "complete", args.finishedAt ?? new Date().toISOString());
+  return runId;
 }

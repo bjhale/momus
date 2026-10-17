@@ -58,7 +58,7 @@ export function expandViewports(target: Target, configured: number[]): number[] 
 
 /** Stable JSON for comparing recipes: object keys are sorted at every depth,
  * so key order in a config file never reads as a changed recipe. */
-export function canonicalJson(recipe: Recipe | undefined): string | null {
+export function canonicalJson(recipe: unknown): string | null {
   return recipe === undefined ? null : JSON.stringify(sortKeys(recipe));
 }
 

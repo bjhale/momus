@@ -224,6 +224,3 @@ export function clearBaseline(db: Database): void {
   db.exec("DELETE FROM baseline_images; DELETE FROM snapshot;");
 }
 
-export function clearRuns(db: Database): void {
-  db.exec("DELETE FROM comparisons; DELETE FROM runs;");
-}
