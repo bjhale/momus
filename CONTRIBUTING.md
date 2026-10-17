@@ -79,6 +79,14 @@ Number the file sequentially, follow the existing context → decision →
 consequences shape, and add a row to the table in
 [docs/adr/README.md](docs/adr/README.md).
 
+## Roadmap and RFCs
+
+Where momus is headed is in [ROADMAP.md](ROADMAP.md): milestones to 1.0, and
+the 2.0 server. Each large feature has an RFC in [docs/rfcs/](docs/rfcs/). An
+RFC is a proposal and changes while it's discussed. When one ships, record its
+decisions as ADRs and mark it `Implemented`. Before starting a roadmap feature,
+read its RFC and settle its open questions.
+
 ## Releasing
 
 Releases are cut by pushing a version tag. The
