@@ -80,7 +80,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push (arm64 native, amd64 emulated)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -89,3 +89,6 @@ jobs:
           provenance: mode=max
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
