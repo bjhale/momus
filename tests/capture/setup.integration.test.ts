@@ -1,11 +1,18 @@
 // tests/capture/setup.integration.test.ts
-import { test, expect } from "bun:test";
+import { test, expect, beforeAll, afterAll } from "bun:test";
 import { launchBrowser } from "../../src/capture/browser";
 import { ConfigSchema } from "../../src/config/schema";
 import { runSetup, SetupError } from "../../src/capture/setup";
 import { launchable } from "../helpers/engines";
 
-const maybe = (await launchable("chromium")) ? test : test.skip;
+const canLaunch = await launchable("chromium");
+const maybe = canLaunch ? test : test.skip;
+// Shared per file: each browser launch/close cycle risks Bun's intermittent
+// child-process hang on close, so launch once. Isolation holds because every
+// capture and setup opens its own browser context.
+let browser: Awaited<ReturnType<typeof launchBrowser>>;
+beforeAll(async () => { if (canLaunch) browser = await launchBrowser("chromium"); });
+afterAll(async () => { await browser?.close(); });
 
 const FORM = `<form method="post" action="/login"><input id="email" name="email">
   <input id="password" name="password" type="password"><button type="submit">go</button></form>`;
@@ -42,20 +49,18 @@ function configFor(origin: string, password: string) {
 
 maybe("setup logs in and returns the session", async () => {
   const server = loginSite();
-  const browser = await launchBrowser("chromium");
   try {
     const state = await runSetup(browser, "dev", configFor(`http://localhost:${server.port}`, "hunter2"));
     expect(state!.cookies.map((c) => c.name)).toContain("session");
-  } finally { await browser.close(); server.stop(); }
+  } finally { server.stop(); }
 });
 
 maybe("a failed login is a SetupError that does not leak the password", async () => {
   const server = loginSite();
-  const browser = await launchBrowser("chromium");
   try {
     const err = await runSetup(browser, "dev", configFor(`http://localhost:${server.port}`, "wrong-pw-xyz")).catch((e) => e);
     expect(err).toBeInstanceOf(SetupError);
     expect(err.message.startsWith('setup (dev) step 5: waitFor "[data-user-menu]": ')).toBe(true);
     expect(err.message).not.toContain("wrong-pw-xyz");
-  } finally { await browser.close(); server.stop(); }
+  } finally { server.stop(); }
 });

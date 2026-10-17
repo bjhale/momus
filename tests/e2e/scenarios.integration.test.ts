@@ -1,5 +1,5 @@
 // tests/e2e/scenarios.integration.test.ts
-import { test, expect } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { PNG } from "pngjs";
 import { launchBrowser } from "../../src/capture/browser";
 import { DiffPool } from "../../src/diff/pool";
@@ -50,67 +50,75 @@ const login = (email: string, password: string) => ({
 const NAV = { id: "nav-open", path: "/", steps: [{ click: "button[aria-label=Menu]" }, { waitFor: "nav[data-open]" }], capture: { element: "nav" } };
 
 for (const engine of TEST_ENGINES) {
-  const maybe = (await launchable(engine)) ? test : test.skip;
+  const canLaunch = await launchable(engine);
+  describe(engine, () => {
+    const maybe = canLaunch ? test : test.skip;
+    // Shared per file: each browser launch/close cycle risks Bun's intermittent
+    // child-process hang on close, so launch once. Isolation holds because every
+    // capture and setup opens its own browser context.
+    let browser: Awaited<ReturnType<typeof launchBrowser>>;
+    beforeAll(async () => { if (canLaunch) browser = await launchBrowser(engine); });
+    afterAll(async () => { await browser?.close(); });
 
-  async function withSites<T>(prodPass: string, scenarios: unknown[], timeoutMs: number,
-    fn: (a: { run: () => ReturnType<typeof runFlow>; db: ReturnType<typeof openDb> }) => Promise<T>) {
-    const dev = site("alice", "devpass");
-    const prod = site("bob", "prodpass");
-    const config = ConfigSchema.parse({
-      dev: `http://localhost:${dev.port}`, prod: `http://localhost:${prod.port}`,
-      browser: engine, viewports: [1280],
-      stabilize: { waitUntil: "load", settleMs: 0, timeoutMs },
-      setup: { dev: login("alice", "devpass"), prod: login("bob", prodPass) },
-      scenarios,
-    });
-    const db = openDb(":memory:");
-    const browser = await launchBrowser(engine);
-    const diffPool = new DiffPool(2);
-    try {
-      return await fn({
-        db,
-        run: () => runFlow({
-          config, db, now: "2026-10-17T10:00:00Z", discover: async () => ["/"],
-          sources: [scenariosSource(config)], diffPool, ...captureSeams(browser, config),
-        }),
+    async function withSites<T>(prodPass: string, scenarios: unknown[], timeoutMs: number,
+      fn: (a: { run: () => ReturnType<typeof runFlow>; db: ReturnType<typeof openDb> }) => Promise<T>) {
+      const dev = site("alice", "devpass");
+      const prod = site("bob", "prodpass");
+      const config = ConfigSchema.parse({
+        dev: `http://localhost:${dev.port}`, prod: `http://localhost:${prod.port}`,
+        browser: engine, viewports: [1280],
+        stabilize: { waitUntil: "load", settleMs: 0, timeoutMs },
+        setup: { dev: login("alice", "devpass"), prod: login("bob", prodPass) },
+        scenarios,
       });
-    } finally {
-      await diffPool.close(); await browser.close(); dev.stop(); prod.stop();
+      const db = openDb(":memory:");
+      const diffPool = new DiffPool(2);
+      try {
+        return await fn({
+          db,
+          run: () => runFlow({
+            config, db, now: "2026-10-17T10:00:00Z", discover: async () => ["/"],
+            sources: [scenariosSource(config)], diffPool, ...captureSeams(browser, config),
+          }),
+        });
+      } finally {
+        await diffPool.close(); dev.stop(); prod.stop();
+      }
     }
-  }
 
-  maybe(`[${engine}] logs in per side, runs a scenario, captures the element`, async () => {
-    await withSites("prodpass", [NAV], 5000, async ({ run, db }) => {
-      const res = await run();
-      expect(res.ok).toBe(true);
-      const rows = readComparisons(db, latestRunId(db)!);
-      expect(rows.length).toBeGreaterThan(0);
-      for (const r of rows) { expect(r.error).toBeUndefined(); expect(r.status).toBe("ok"); expect(r.passed).toBe(true); }
-      const img = readBaselineImages(db).find((b) => b.targetId === "scenarios:nav-open")!;
-      const png = PNG.sync.read(Buffer.from(img.image!));
-      expect([png.width, png.height]).toEqual([300, 120]);
+    maybe(`[${engine}] logs in per side, runs a scenario, captures the element`, async () => {
+      await withSites("prodpass", [NAV], 5000, async ({ run, db }) => {
+        const res = await run();
+        expect(res.ok).toBe(true);
+        const rows = readComparisons(db, latestRunId(db)!);
+        expect(rows.length).toBeGreaterThan(0);
+        for (const r of rows) { expect(r.error).toBeUndefined(); expect(r.status).toBe("ok"); expect(r.passed).toBe(true); }
+        const img = readBaselineImages(db).find((b) => b.targetId === "scenarios:nav-open")!;
+        const png = PNG.sync.read(Buffer.from(img.image!));
+        expect([png.width, png.height]).toEqual([300, 120]);
+      });
     });
-  });
 
-  maybe(`[${engine}] a wrong prod password is an operational failure that hides the password`, async () => {
-    await withSites("wrong", [NAV], 1000, async ({ run, db }) => {
-      const err = await run().catch((e) => e);
-      expect(err).toBeInstanceOf(Error);
-      expect(err.message.startsWith('setup (prod) step 5: waitFor "button[aria-label=Menu]"')).toBe(true);
-      expect(err.message).not.toContain("wrong");
-      expect(readSnapshot(db)).toBeNull();
+    maybe(`[${engine}] a wrong prod password is an operational failure that hides the password`, async () => {
+      await withSites("wrong", [NAV], 1000, async ({ run, db }) => {
+        const err = await run().catch((e) => e);
+        expect(err).toBeInstanceOf(Error);
+        expect(err.message.startsWith('setup (prod) step 5: waitFor "button[aria-label=Menu]"')).toBe(true);
+        expect(err.message).not.toContain("wrong");
+        expect(readSnapshot(db)).toBeNull();
+      });
     });
-  });
 
-  maybe(`[${engine}] a missing element is a per-target error row`, async () => {
-    await withSites("prodpass", [NAV, { id: "missing", path: "/", capture: { element: "#nope" } }], 5000, async ({ run, db }) => {
-      const res = await run();
-      expect(res.ok).toBe(true);
-      const rows = readComparisons(db, latestRunId(db)!);
-      const bad = rows.filter((r) => r.targetId === "scenarios:missing");
-      expect(bad.length).toBeGreaterThan(0);
-      for (const r of bad) { expect(r.status).toBe("error"); expect(r.error).toContain("matched nothing"); }
-      for (const r of rows.filter((r) => r.targetId !== "scenarios:missing")) expect(r.status).toBe("ok");
+    maybe(`[${engine}] a missing element is a per-target error row`, async () => {
+      await withSites("prodpass", [NAV, { id: "missing", path: "/", capture: { element: "#nope" } }], 5000, async ({ run, db }) => {
+        const res = await run();
+        expect(res.ok).toBe(true);
+        const rows = readComparisons(db, latestRunId(db)!);
+        const bad = rows.filter((r) => r.targetId === "scenarios:missing");
+        expect(bad.length).toBeGreaterThan(0);
+        for (const r of bad) { expect(r.status).toBe("error"); expect(r.error).toContain("matched nothing"); }
+        for (const r of rows.filter((r) => r.targetId !== "scenarios:missing")) expect(r.status).toBe("ok");
+      });
     });
   });
 }
