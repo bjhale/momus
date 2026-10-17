@@ -35,16 +35,13 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0021](0021-targets-and-source-provenance.md) | Targets replace page paths; `source` is provenance, not behavior | 2026-10-16 |
 | [0022](0022-added-and-removed-targets.md) | Added/removed targets are their own statuses; the baseline determines page paths | 2026-10-16 |
 | [0023](0023-per-target-recipe-gate.md) | A target's recipe is gated per target | 2026-10-16 |
+| [0024](0024-versioned-schema-migrations.md) | Versioned schema migrations; a newer DB is refused | 2026-10-17 |
+| [0025](0025-run-history.md) | Run history: inserted runs, never-reused ids, `keepRuns` retention | 2026-10-17 |
+| [0026](0026-prod-origin-in-the-gate.md) | The prod origin joins the compatibility gate | 2026-10-17 |
+| [0027](0027-atomic-baseline-replacement.md) | A baseline is replaced atomically; an all-error capture doesn't freeze | 2026-10-17 |
 
 ## Open questions
 
-Carried forward from the records above, unresolved:
-
-- **All-error materialize freezes a broken baseline.** If the first `run`
-  materializes while prod is unreachable, the baseline freezes with all-error
-  rows and is reused until `momus snapshot` runs again.
-  ([ADR-0011](0011-run-always-diffs-a-baseline.md))
-- **The compatibility gate ignores `prod_base_url`.** A DB pointed at a second
-  site diffs against the first site's baseline and reports garbage that looks
-  clean. ([ADR-0010](0010-baseline-compatibility-gate.md),
-  [ADR-0020](0020-run-snapshot-flag.md))
+None. The two carried forward from ADR-0010/0011 were resolved by
+[ADR-0026](0026-prod-origin-in-the-gate.md) and
+[ADR-0027](0027-atomic-baseline-replacement.md).

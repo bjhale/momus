@@ -1,6 +1,6 @@
 # RFC-0002: Storage versioning and run history
 
-**Status:** Accepted · **Milestone:** M1 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M1 · **Created:** 2026-10-16 · **ADRs:** [0024](../adr/0024-versioned-schema-migrations.md), [0025](../adr/0025-run-history.md), [0026](../adr/0026-prod-origin-in-the-gate.md), [0027](../adr/0027-atomic-baseline-replacement.md)
 
 ## Summary
 
@@ -83,10 +83,10 @@ EXISTS`, and one column was added with a guarded `ALTER TABLE`. That doesn't
 
 The schema must be able to answer, for any run, without the config file:
 
-- [ ] Which momus version, engine and engine version produced it?
-- [ ] Which baseline (id plus identity) was it diffed against?
-- [ ] Which commit, branch or PR did it test, when CI metadata was provided?
-- [ ] What was each target's verdict, score, and the gate that applied?
+- [x] Which momus version, engine and engine version produced it?
+- [x] Which baseline (id plus identity) was it diffed against?
+- [x] Which commit, branch or PR did it test, when CI metadata was provided?
+- [x] What was each target's verdict, score, and the gate that applied?
 
 ## Non-goals
 
@@ -107,10 +107,28 @@ v0.9.x. Old DBs open and migrate; their baseline stays diffable.
 
 ## Done when
 
-- [ ] Versioned migrations; a newer-version DB is refused with exit 2.
-- [ ] A v0.9.x fixture DB migrates and its baseline diffs unchanged.
-- [ ] Multiple runs are kept and pruned by `keepRuns`; `momus report --run ID`
+- [x] Versioned migrations; a newer-version DB is refused with exit 2.
+- [x] A v0.9.x fixture DB migrates and its baseline diffs unchanged.
+- [x] Multiple runs are kept and pruned by `keepRuns`; `momus report --run ID`
       works.
-- [ ] Every item in the known-gaps list is fixed and tested, and has an ADR
+- [x] Every item in the known-gaps list is fixed and tested, and has an ADR
       superseding or amending ADR-0010 and ADR-0011.
-- [ ] The server-ready checklist is answerable from the schema alone.
+- [x] The server-ready checklist is answerable from the schema alone.
+
+## Revisions
+
+- **2026-10-17: implemented.** Changes from the accepted text:
+  - CI metadata comes from `--commit`, `--branch` and `--pr` only. Detecting
+    GitHub Actions and GitLab CI environment variables stays with
+    [RFC-0008](0008-cli-ci-integration.md), which fills the same columns.
+  - An all-error capture is refused by `momus snapshot` and `run --snapshot`
+    too, not only by a first `run`. Replacement is one transaction, so the
+    previous baseline survives instead of being discarded
+    ([ADR-0027](../adr/0027-atomic-baseline-replacement.md)).
+  - `momus snapshot` no longer clears run history: each run keeps its own prod
+    images and records the baseline it used
+    ([ADR-0025](../adr/0025-run-history.md)).
+  - `snapshot --snapshot` is rejected at parse time; general per-command flag
+    validation stays with [RFC-0009](0009-stability-contract.md).
+  - `package.json`'s version is now the source of the recorded momus version,
+    and the release workflow checks the tag against it.

@@ -38,7 +38,7 @@ Each RFC has these sections:
 | # | Title | Milestone | Status |
 | --- | --- | --- | --- |
 | [0001](0001-targets.md) | Targets: generalize "page path" | M1 | Implemented |
-| [0002](0002-storage-and-run-history.md) | Storage versioning and run history | M1 | Draft |
+| [0002](0002-storage-and-run-history.md) | Storage versioning and run history | M1 | Implemented |
 | [0003](0003-approval-workflow.md) | Approved baselines and the approval workflow | M2 | Draft |
 | [0004](0004-scripted-interactions.md) | Scripted interactions, element capture, and auth | M3 | Draft |
 | [0005](0005-storybook.md) | Storybook stories as targets | M4 | Draft |

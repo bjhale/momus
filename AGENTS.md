@@ -20,7 +20,7 @@ something that looks odd.
 ## Commands
 
 ```bash
-bun run test                         # whole suite (~190 tests, ~8s); adds --timeout, as CI does
+bun run test                         # whole suite (~300 tests, ~9s); adds --timeout, as CI does
 bunx tsc --noEmit                    # typecheck
 bun run src/cli.ts <command>         # run momus from source (or: bun momus)
 bun run src/cli.ts install-browser   # needed once before browser-guarded tests
@@ -50,9 +50,13 @@ Break these and the tool is subtly wrong rather than obviously broken:
   gate** in `src/pipeline/compat.ts` — and needs a backward-compatible default
   (`?? []`, `?? "chromium"`) so baselines captured before the change stay
   diffable. ([ADR-0010](docs/adr/0010-baseline-compatibility-gate.md))
+- **Every schema change is a new migration** in `src/store/migrations.ts`.
+  Never edit a released step, and keep `tests/fixtures/db/v0.9.4.sqlite` opening
+  and diffing. ([ADR-0024](docs/adr/0024-versioned-schema-migrations.md))
 - **CLI flags beat config-file values beat defaults.** Flags are registered
   globally in `parseArgs`, so a flag only one command reads is still accepted by
-  the others.
+  the others. The one exception is `momus snapshot --snapshot`, rejected at parse
+  time ([ADR-0026](docs/adr/0026-prod-origin-in-the-gate.md)).
 
 ## Testing conventions
 
@@ -95,13 +99,6 @@ don't build anything that contradicts an RFC's "Compatibility" section.
 
 ## Known gaps
 
-Real, unresolved, and easy to trip over:
-
-- **The compatibility gate ignores `prod_base_url`.** A DB pointed at a second
-  site diffs against the first site's baseline and produces a clean-looking
-  report full of garbage. `--prod` on `run` is likewise a silent no-op when a
-  baseline exists. ([ADR-0020](docs/adr/0020-run-snapshot-flag.md))
-- **An all-error materialize still freezes.** A first `run` while prod is
-  unreachable freezes a baseline of error rows, reused until `momus snapshot`
-  runs again. ([ADR-0011](docs/adr/0011-run-always-diffs-a-baseline.md))
-- `momus snapshot --snapshot` parses and does nothing.
+None currently tracked. RFC-0002 closed the four baseline-model gaps
+([ADR-0026](docs/adr/0026-prod-origin-in-the-gate.md),
+[ADR-0027](docs/adr/0027-atomic-baseline-replacement.md)).

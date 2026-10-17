@@ -62,9 +62,13 @@ feature:
 
 - **The compatibility gate ignores `prod_base_url`.** A DB pointed at a
   different site diffs against the first site's baseline.
+  Fixed in RFC-0002 ([ADR-0026](docs/adr/0026-prod-origin-in-the-gate.md)).
 - **`--prod` on `run` is a silent no-op** when a baseline exists.
+  Fixed in RFC-0002 ([ADR-0026](docs/adr/0026-prod-origin-in-the-gate.md)).
 - **An all-error materialize freezes a broken baseline.**
+  Fixed in RFC-0002 ([ADR-0027](docs/adr/0027-atomic-baseline-replacement.md)).
 - **`momus snapshot --snapshot`** parses and does nothing.
+  Fixed in RFC-0002 ([ADR-0026](docs/adr/0026-prod-origin-in-the-gate.md)).
 
 ## 2.0: the server
 

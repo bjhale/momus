@@ -21,8 +21,9 @@ capture; emit one file a human can open.
 | --- | --- |
 | `momus init` | Scaffold a commented `momus.config.ts`. |
 | `momus install-browser` | Download all three Playwright engines. The **only** command that downloads a browser. |
-| `momus snapshot` | Discover from prod + capture prod → baseline tables. Replaces any existing baseline. |
+| `momus snapshot` | Discover from prod + capture prod → baseline tables. Replaces any existing baseline atomically; refuses (exit 2) if every capture failed. |
 | `momus run` | Diff live dev against the stored prod baseline → report + exit code. Materializes a baseline first if none exists, or if `--snapshot` is passed. |
+| `momus report` | Re-render a stored run's report: the latest, or `--run ID`. |
 
 ## The baseline model
 
@@ -33,6 +34,12 @@ capture; emit one file a human can open.
 - Baseline present → it is **frozen**. `run` captures dev only and never touches
   prod. Refresh with `momus snapshot`, or `momus run --snapshot` to do the
   re-capture and the diff in one invocation.
+
+Replacing a baseline is one transaction: if every prod capture fails, it rolls
+back, the previous baseline (if any) survives, and the command exits 2
+([ADR-0027](adr/0027-atomic-baseline-replacement.md)). Each run records the
+baseline it used (`baseline_id` plus its identity JSON), so a later snapshot
+doesn't invalidate stored runs.
 
 A run's jobs come from `reconcile()` ([reconcile.ts](../src/targets/reconcile.ts))
 over the baseline and each source's live list. A live target with no baseline
@@ -48,9 +55,12 @@ rather than near-simultaneously. That temporal skew is inherent to a frozen
 baseline; selector masking is the mitigation.
 
 Before diffing, a **compatibility gate** ([compat.ts](../src/pipeline/compat.ts))
-compares the live config's `browser`, `viewports`, and `stabilize` against the
-baseline's. Any mismatch is a hard error (exit 2) — a dev capture at 1280px
-against a prod capture at 768px is ~100% "changed" and tells you nothing.
+compares the live config's prod origin, `browser`, `viewports`, and `stabilize`
+against the baseline's. Any mismatch is a hard error (exit 2) — a dev capture at
+1280px against a prod capture at 768px is ~100% "changed" and tells you nothing,
+and a baseline from another prod origin is another site
+([ADR-0026](adr/0026-prod-origin-in-the-gate.md)). `--prod` overrides
+`config.prod`, so a mismatching `--prod` on `run` is caught the same way.
 
 ## Pipeline
 
@@ -103,7 +113,7 @@ recorder; the pipelines never see the library.
 ```text
 src/
 ├── cli.ts              # arg parsing (util.parseArgs), subcommand dispatch, help
-├── commands/           # init, install, snapshot, run — config load, browser
+├── commands/           # init, install, snapshot, run, report — config load, browser
 │                       #   lifecycle, and wiring; logic lives in pipeline/
 ├── config/
 │   ├── schema.ts       # Zod schema, ResolvedConfig, defineConfig()
@@ -134,12 +144,15 @@ src/
 │   ├── diff.ts         # pixelmatch → diff PNG + score
 │   ├── worker.ts       # Worker entry
 │   └── pool.ts         # worker pool, dispatch/collect, crash-respawn
-├── store/db.ts         # open/migrate + typed read/write helpers
+├── store/
+│   ├── migrations.ts   # ordered, frozen schema steps; PRAGMA user_version; newer-DB refusal
+│   └── db.ts           # open + typed read/write helpers, run pruning
 ├── report/
 │   ├── summary.ts      # derive counts/verdict/worst from records
 │   ├── template.ts     # renderReport(rows, meta) → HTML string (pure)
 │   └── report.ts       # read DB → write file
 ├── glob.ts             # matchPath(path, pattern) — one predicate for all globs
+├── version.ts          # MOMUS_VERSION from package.json, recorded on every run
 └── types.ts            # Job, CaptureResult, ComparisonRecord, …
 ```
 
@@ -150,22 +163,27 @@ suite run with no browser and no network.
 
 ## Data model
 
-One SQLite file (`output.db`, default `momus.sqlite`) holds four tables. All are
-created with `CREATE TABLE IF NOT EXISTS` on open, so an older DB gains new
-tables automatically. A pre-targets DB has its image tables rebuilt in place on
-open, with `target_id = label = path` and `source = 'pages'`
-([ADR-0021](adr/0021-targets-and-source-provenance.md)).
+One SQLite file (`output.db`, default `momus.sqlite`) holds four tables. The
+schema is versioned with `PRAGMA user_version` and brought up to date on open by
+the ordered, frozen steps in
+[migrations.ts](../src/store/migrations.ts); a DB from a newer momus is refused
+through a read-only probe before anything writes to it
+([ADR-0024](adr/0024-versioned-schema-migrations.md)). v1 is the v0.9.x schema,
+v2 keys the image tables on `target_id`
+([ADR-0021](adr/0021-targets-and-source-provenance.md)), v3 adds run history.
 
 | Table | Rows | Purpose |
 | --- | --- | --- |
-| `runs` | one (`id = 1`) | Run metadata: timestamps, dev/prod base URLs, resolved config JSON, status. A table rather than a key/value blob so run history can be added later without a rewrite. |
-| `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, dimensions, `diff_pixels`, `diff_score`, `passed`, `status` (`ok`/`error`/`added`/`removed`), `error`. Unique on `(run_id, target_id, viewport)`. |
-| `snapshot` | one (`id = 1`) | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, full `config_json`. Drives the compatibility gate and report provenance. |
+| `runs` | one per kept run (`output.keepRuns`, default 5) | AUTOINCREMENT ids. Timestamps, dev/prod base URLs, resolved config JSON, status; provenance: momus version, engine + version, config hash, baseline id + identity, allow flags, CI commit/branch/PR. |
+| `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, dimensions, `diff_pixels`, `diff_score`, `fail_score` (the gate that applied), `passed`, `status` (`ok`/`error`/`added`/`removed`), `error`. Unique on `(run_id, target_id, viewport)`. |
+| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, full `config_json`. Drives the compatibility gate and report provenance. |
 | `baseline_images` | one per `target × viewport` | `target_id`, `source`, `label`, `recipe_json` (canonical, sorted keys; NULL = no recipe), frozen prod PNG BLOBs plus `status`/`error`. Unique on `(target_id, viewport)`. |
 
-`run` truncates only `runs`/`comparisons`; the baseline tables survive.
-`snapshot` clears the baseline **and** the stale run rows (a new baseline
-invalidates prior results).
+`run` inserts a run, then prunes to the newest `output.keepRuns` (0 = keep all)
+and runs `incremental_vacuum`. Each run owns its images outright — no
+content-hash dedupe — so pruning is a plain delete. `snapshot` replaces the
+baseline tables and keeps runs: each holds its own prod images
+([ADR-0025](adr/0025-run-history.md)).
 
 Images are BLOBs, not files — the single `.sqlite` is the portable artifact you
 can commit or pass as a CI artifact.
@@ -187,7 +205,7 @@ built-in defaults**.
 | `stabilize` | `waitUntil`, `settleMs`, `timeoutMs`, `disableAnimations`, `mask`, `remove`. Gated against the baseline. |
 | `diff` | `threshold` (per-pixel sensitivity) and `failScore` (page-level gate) — two different knobs, see [ADR-0004](adr/0004-two-threshold-knobs.md). Plus per-path `overrides`. |
 | `concurrency` | `screenshots` (the `--concurrency` flag maps here) and `diffWorkers` (config only). |
-| `output` | `report` path and `db` path. One DB per site is the intended shape. |
+| `output` | `report` path, `db` path, `keepRuns` (default 5; 0 = unlimited). One DB per site is the intended shape. |
 
 ### Discovery order
 
@@ -229,10 +247,12 @@ message, surfaced in the report as an error card.
 | --- | --- |
 | `0` | Ran; nothing fails the gate: every comparison passed, and any added/removed targets were allowed. |
 | `1` | Ran; at least one comparison failed the gate, errored, or is `added`/`removed` (unless allowed). An error counts as a regression signal, not a silent pass. |
-| `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict. |
+| `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict, DB from a newer momus, every prod capture failed. |
 
 `momus snapshot` exits `0` even when individual prod pages fail (they become
-error rows) and `2` only on operational failure.
+error rows) and `2` on operational failure, including every capture failing.
+`momus report` exits `0`, or `2` for a missing DB file, no runs, or an unknown
+run id.
 
 ## Testing
 

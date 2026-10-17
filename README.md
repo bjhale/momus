@@ -72,7 +72,11 @@ discovers pages from prod, screenshots each at every viewport, and stores the
 prod images plus the capture context (viewports + stabilize settings). Reuse it
 across many `momus run` invocations without re-screenshotting prod.
 Running `momus snapshot` again replaces the baseline — it is how you refresh the
-frozen prod capture that `momus run` reuses.
+frozen prod capture that `momus run` reuses. The replacement is all-or-nothing:
+if **every** prod capture fails (prod unreachable), nothing is saved, the
+previous baseline is kept, and the command exits 2. If only some pages fail, the
+baseline is saved with those pages as error rows. Stored runs are kept; each
+holds its own copy of the prod images it was diffed against.
 
 | Flag | Description |
 | --- | --- |
@@ -97,13 +101,20 @@ a stored **prod baseline**:
   against it and writes the report, all in one invocation.
 - **Baseline present**: `momus run` reuses it and captures **dev only** — prod is
   **not** re-screenshotted (it is frozen). The run **fails fast (exit 2)** if the
-  live config's `viewports` or `stabilize` settings differ from the baseline's.
+  live config's `browser`, `viewports` or `stabilize` settings differ from the
+  baseline's.
+- **Different prod origin**: if `prod` (or `--prod`) has a different origin
+  (scheme, host, port) than the baseline was captured from, the run fails with
+  exit 2 and names both. Re-capture with `momus run --snapshot` (or
+  `momus snapshot`), or point `output.db` at a separate file for the other site.
 
 Because prod is frozen after the first run, repeated `momus run` invocations diff
-against the same prod baseline; only the `runs`/`comparisons` tables are refreshed
-each run. To re-capture prod, run `momus snapshot` (which replaces the baseline),
-or pass `momus run --snapshot` to do that re-capture and the diff in a single
-invocation.
+against the same prod baseline. Each run is stored as a new run in `output.db`;
+the newest `output.keepRuns` (default 5) are kept and older ones pruned. To
+re-capture prod, run `momus snapshot` (which replaces the baseline), or pass
+`momus run --snapshot` to do that re-capture and the diff in a single
+invocation. A first run (or `--snapshot`) that can't capture a single prod page
+exits 2 without saving a baseline.
 
 | Flag | Description |
 | --- | --- |
@@ -119,14 +130,33 @@ invocation.
 | `--snapshot` | Re-capture the prod baseline before diffing, even when `output.db` already holds one (ignores the freeze). Equivalent to running `momus snapshot` first, in a single invocation. |
 | `--allow-added` | Don't fail the run for targets that are new since the baseline (`diff.allowAdded`). They are still reported. |
 | `--allow-removed` | Don't fail the run for baseline targets that are no longer listed (`diff.allowRemoved`). They are still reported. |
+| `--commit SHA` | Record the commit this run tested. Stored on the run; no effect on the result. |
+| `--branch NAME` | Record the branch this run tested. |
+| `--pr N` | Record the pull request this run tested. |
 
 CLI flags win over config-file values.
 
 On completion `momus run` prints, for example:
 
 ```text
-Wrote momus-report.html (12 comparisons). Exit 0.
+Wrote momus-report.html for run #7 (12 comparisons). Exit 0.
 ```
+
+### `momus report [flags]`
+
+Re-renders the HTML report for a run stored in `output.db` — the latest by
+default. It needs no browser and no network, and never creates a DB file. The
+pass/fail gate is the one recorded on that run, so an old run renders with the
+verdict it had, whatever today's config says.
+
+| Flag | Description |
+| --- | --- |
+| `--run ID` | Render this run instead of the latest. Run ids are never reused. |
+| `--out FILE` | Override the report output path (default `momus-report.html`). |
+| `--config FILE` | Path to the config file (default `./momus.config.ts`); used for `output.db` and `output.report`. |
+
+Exits `0` on success and `2` if there is no DB file, no runs, or no run with that
+id (the message lists the ids available).
 
 ## Configuration
 
@@ -173,7 +203,7 @@ export default defineConfig({
 
   concurrency: { screenshots: 6, diffWorkers: 4 },
 
-  output: { report: "momus-report.html", db: "momus.sqlite" },
+  output: { report: "momus-report.html", db: "momus.sqlite", keepRuns: 5 },  // keepRuns: 0 = keep all
 });
 ```
 
@@ -220,6 +250,10 @@ Notes:
   whose `browser` differs from the baseline's fails fast (exit 2), because
   screenshots from different engines are not comparable. Re-capture with
   `momus snapshot` to change the baseline's engine.
+- **`output.keepRuns`** is how many runs `output.db` keeps (default `5`; `0` =
+  unlimited). Each run stores its own dev, prod and diff images, so the file
+  grows with this number; the oldest runs are pruned and their space reclaimed
+  after every run. Lower it if you commit the file.
 - **`requestHeaders`** is an optional map of headers sent on every request — both
   the discovery fetches and the browser page loads — to reach sites behind an
   auth proxy. For example, to get through **Cloudflare Access** with a service
@@ -257,13 +291,14 @@ Notes:
 
 ## Exit codes
 
-`momus run` returns a process exit code so it can gate CI:
+`momus run` returns a process exit code so it can gate CI (`snapshot` and
+`report` use `0` and `2` the same way):
 
 | Code | Meaning |
 | --- | --- |
 | `0` | All pages captured and passed the diff gate. |
 | `1` | At least one page failed the gate, errored, or is **added**/**removed** (unless allowed). A report is still written. |
-| `2` | Operational error that prevented the run (missing browser, bad config, unrecoverable failure). |
+| `2` | Operational error that prevented the run: missing browser, bad config, a baseline conflict (different prod origin, browser, viewports or stabilize), a DB written by a newer momus, every prod capture failing, or another unrecoverable failure. |
 
 ## How it works
 
@@ -290,9 +325,10 @@ piping stdout to a file stays clean.
 
 ## Notes & known limitations
 
-- **The database is migrated in place.** An `output.db` opened by this version is
-  upgraded to target-keyed tables and can no longer be written by older momus
-  versions.
+- **The database is versioned and migrated in place.** Opening an `output.db`
+  from an older momus upgrades it step by step; don't open it with the older
+  version afterwards. A DB written by a **newer** momus is refused (exit 2) and
+  left untouched — upgrade momus or point `output.db` elsewhere.
 - **Distributed as a Docker image, not a standalone binary.** momus drives
   Chromium via Playwright, which needs its `node_modules` and a matching browser
   at runtime — awkward to ship as a lone executable. The image bundles momus
@@ -309,6 +345,5 @@ piping stdout to a file stays clean.
   error with the message; the successfully-captured side is not currently shown
   on the error card.
 - **One baseline per DB.** `momus snapshot` stores a single prod baseline in
-  `output.db`; a new snapshot replaces it (and clears stale run results). Full
-  multi-run history remains out of scope; a separate server component may add it
-  later.
+  `output.db`; a new snapshot replaces it. The last `output.keepRuns` runs are
+  kept alongside it, and `momus report --run ID` re-renders any of them.
