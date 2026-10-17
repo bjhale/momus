@@ -129,3 +129,70 @@ test("output.keepRuns defaults to 5 and accepts 0 (unlimited)", () => {
   expect(ConfigSchema.parse({ ...base, output: { keepRuns: 0 } }).output.keepRuns).toBe(0);
   expect(() => ConfigSchema.parse({ ...base, output: { keepRuns: -1 } })).toThrow();
 });
+
+// RFC-0004: scenarios and setup
+const rfc4Base = { dev: "https://dev.example.com", prod: "https://www.example.com" };
+
+test("scenarios default to [] and setup to undefined", () => {
+  const c = ConfigSchema.parse(rfc4Base);
+  expect(c.scenarios).toEqual([]);
+  expect(c.setup).toBeUndefined();
+});
+
+test("a scenario parses with every step kind, and steps default to []", () => {
+  const c = ConfigSchema.parse({ ...rfc4Base, scenarios: [
+    { id: "all", path: "/", capture: { element: "nav" }, viewports: [375], steps: [
+      { click: "button" }, { hover: "a" }, { fill: ["#q", "hi"] }, { press: "Escape" },
+      { press: ["#q", "Enter"] }, { select: ["select", "b"] }, { scroll: "footer" },
+      { waitFor: "nav" }, { waitFor: { hidden: ".spinner" } }, { wait: 50 }, { evaluate: "1" },
+    ] },
+    { id: "bare", path: "/about" },
+  ] });
+  expect(c.scenarios[0]!.steps.length).toBe(11);
+  expect(c.scenarios[1]!.steps).toEqual([]);
+});
+
+test("scenarios reject unknown step kinds, goto, two-key steps, and bad ids/paths", () => {
+  const bad = (s: unknown) => expect(() => ConfigSchema.parse({ ...rfc4Base, scenarios: [s] })).toThrow();
+  bad({ id: "a", path: "/", steps: [{ tap: "x" }] });
+  bad({ id: "a", path: "/", steps: [{ goto: "/x" }] });          // goto is setup-only
+  bad({ id: "a", path: "/", steps: [{ click: "x", hover: "y" }] });
+  bad({ id: "has space", path: "/" });
+  bad({ id: "a", path: "no-slash" });
+  bad({ id: "a", path: "/", extra: true });
+});
+
+test("duplicate scenario ids are a config error naming the id", () => {
+  expect(() => ConfigSchema.parse({ ...rfc4Base, scenarios: [{ id: "x", path: "/" }, { id: "x", path: "/a" }] }))
+    .toThrow(/duplicate scenario id \\?"x\\?"/); // ZodError.message is JSON, so the quotes arrive escaped
+});
+
+test("a shared setup is normalized onto both sides", () => {
+  const steps = [{ goto: "/login" }, { click: "button" }];
+  const c = ConfigSchema.parse({ ...rfc4Base, setup: { steps } });
+  expect(c.setup).toEqual({ dev: { steps }, prod: { steps } });
+  const s = ConfigSchema.parse({ ...rfc4Base, setup: { storageState: "auth.json" } });
+  expect(s.setup).toEqual({ dev: { storageState: "auth.json" }, prod: { storageState: "auth.json" } });
+});
+
+test("a per-side setup keeps each side, and may mix steps and storageState", () => {
+  const c = ConfigSchema.parse({ ...rfc4Base, setup: {
+    dev: { steps: [{ goto: "/login" }] }, prod: { storageState: "prod.json" } } });
+  expect(c.setup).toEqual({ dev: { steps: [{ goto: "/login" }] }, prod: { storageState: "prod.json" } });
+});
+
+test("setup rejects mixing shared and per-side, one side only, both or neither of steps/storageState", () => {
+  const bad = (setup: unknown, msg: RegExp) => expect(() => ConfigSchema.parse({ ...rfc4Base, setup })).toThrow(msg);
+  bad({ steps: [{ goto: "/" }], dev: { steps: [{ goto: "/" }] } }, /not both/);
+  bad({ dev: { steps: [{ goto: "/" }] } }, /both dev and prod/);
+  bad({ steps: [{ goto: "/" }], storageState: "a.json" }, /exactly one of steps or storageState/);
+  bad({}, /exactly one of steps or storageState/);
+  bad({ dev: { steps: [{ goto: "/" }], storageState: "a" }, prod: { storageState: "b" } }, /exactly one/);
+  bad({ steps: [] }, /./); // an empty login is a mistake, not a no-op
+});
+
+test("parsing a resolved config again is idempotent (applyDefaults re-parses)", () => {
+  const once = ConfigSchema.parse({ ...rfc4Base, setup: { steps: [{ goto: "/login" }] },
+    scenarios: [{ id: "a", path: "/", steps: [{ click: "b" }] }] });
+  expect(ConfigSchema.parse(once)).toEqual(once);
+});
