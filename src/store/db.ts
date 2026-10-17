@@ -53,7 +53,7 @@ export interface RunRow {
   devBaseUrl: string; prodBaseUrl: string; configJson: string;
   momusVersion?: string; engine?: string; engineVersion?: string; configHash?: string;
   baselineId?: number; baselineJson?: string;
-  /** NULL on a pre-v3 run reads as false: those runs predate added/removed. */
+  /** NULL reads as false: runs from before RFC-0001 never allowed added/removed. v3 backfills RFC-0001-era runs from config_json, so NULL means "unrecorded and never allowed". */
   allowAdded: boolean; allowRemoved: boolean;
   ci: CiMetadata;
 }

@@ -69,3 +69,26 @@ test("a DB with no runs exits 2", async () => {
   openDb(p.db).close();
   expect(await reportCommand(parseCliArgs(["report", "--config", p.cfg]))).toBe(2);
 });
+
+test("a failed run still renders (exit 0) but warns on stderr with its status", async () => {
+  const p = project();
+  const db = openDb(p.db);
+  const id = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "t" });
+  finishRun(db, id, "failed", "f");
+  db.close();
+  spyOn(console, "log").mockImplementation(() => {});
+  const err = spyOn(console, "error").mockImplementation(() => {});
+  expect(await reportCommand(parseCliArgs(["report", "--config", p.cfg]))).toBe(0);
+  expect(err.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(new RegExp(`run #${id}.*failed`));
+  const html = await Bun.file(p.out).text();
+  expect(html).toContain("momus — FAIL");
+});
+
+test("a complete run does not warn", async () => {
+  const p = project();
+  seed(p.db, 1);
+  spyOn(console, "log").mockImplementation(() => {});
+  const err = spyOn(console, "error").mockImplementation(() => {});
+  expect(await reportCommand(parseCliArgs(["report", "--config", p.cfg]))).toBe(0);
+  expect(err).not.toHaveBeenCalled();
+});

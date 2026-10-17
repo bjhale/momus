@@ -147,7 +147,10 @@ Wrote momus-report.html for run #7 (12 comparisons). Exit 0.
 Re-renders the HTML report for a run stored in `output.db` — the latest by
 default. It needs no browser and no network, and never creates a DB file. The
 pass/fail gate is the one recorded on that run, so an old run renders with the
-verdict it had, whatever today's config says.
+verdict it had, whatever today's config says. A run that did not complete
+(failed or interrupted) renders as FAIL with its status in the header, and the
+command prints a warning. `report` loads the same config file (for `output.db`
+and `output.report`), so the config must validate, dev and prod URLs included.
 
 | Flag | Description |
 | --- | --- |

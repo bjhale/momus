@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb as openDbRaw, readSnapshot, readBaselineImages, readComparisons } from "../../src/store/db";
 import { LATEST_VERSION, userVersion } from "../../src/store/migrations";
+import { writeReport } from "../../src/report/report";
 import { runFlow } from "../../src/pipeline/run-flow";
 import { ConfigSchema } from "../../src/config/schema";
 import { exitCodeFor } from "../../src/pipeline/verdict";
@@ -75,4 +76,13 @@ test("the v0.9.4 baseline diffs unchanged: dev identical to the baseline passes 
   const rows = readComparisons(db, latest);
   expect(rows.length).toBe(2);
   expect(exitCodeFor(rows)).toBe(0);
+});
+
+test("the migrated v0.9.4 run renders as a report", async () => {
+  const db = openDb(copy());
+  const out = join(dir, "report.html");
+  await writeReport(db, 1, out);
+  const html = await Bun.file(out).text();
+  expect(html).toContain("run #1");
+  expect(html).toContain(">/about<");
 });

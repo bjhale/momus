@@ -55,8 +55,9 @@ reshaping it.
 
 ### M1 also fixes the known gaps
 
-These are recorded in [AGENTS.md](AGENTS.md) and the
-[ADR open questions](docs/adr/README.md#open-questions). They ship in M1 because
+These were recorded in [AGENTS.md](AGENTS.md) and the
+[ADR open questions](docs/adr/README.md#open-questions), and are fixed in
+RFC-0002. They shipped in M1 because
 they make results wrong while looking right, which is worse than missing a
 feature:
 

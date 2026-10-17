@@ -31,5 +31,7 @@ both origins and both fixes: re-capture with `momus run --snapshot` (or
 
 - No backward-compatible default is needed: `snapshot.prod_base_url` has been
   `NOT NULL` since the first release, so every existing baseline carries it.
+- Two sites on different paths of one host share an origin, so the gate does
+  not tell them apart. Accepted: one DB per site remains the intended shape.
 - Changing prod's scheme or port (`http` → `https`) is a conflict too. That is
   correct: it's a different capture, and the fix is one flag.

@@ -189,6 +189,12 @@ function v3(db: Database): void {
   );`);
   db.exec(`INSERT INTO runs_v3 (id, started_at, finished_at, dev_base_url, prod_base_url, config_json, status)
     SELECT id, started_at, finished_at, dev_base_url, prod_base_url, config_json, status FROM runs;`);
+  // RFC-0001-era builds ran with allowAdded/allowRemoved but stored them only
+  // inside config_json. json_extract yields 1/0 for true/false and NULL when
+  // absent; json_valid guards rows whose config_json isn't JSON at all.
+  db.exec(`UPDATE runs_v3 SET
+    allow_added   = CASE WHEN json_valid(config_json) THEN json_extract(config_json, '$.diff.allowAdded') END,
+    allow_removed = CASE WHEN json_valid(config_json) THEN json_extract(config_json, '$.diff.allowRemoved') END;`);
   db.exec("DROP TABLE runs;");
   db.exec("ALTER TABLE runs_v3 RENAME TO runs;");
 

@@ -130,3 +130,24 @@ test("the header names the run when given", () => {
 test("no run line without a run id", () => {
   expect(renderReport([], { dev: "d", prod: "p" })).not.toContain("run #");
 });
+
+test("a failed run with no comparisons renders FAIL and names the status, never PASS", () => {
+  const html = renderReport([], { dev: "d", prod: "p", runId: 3, startedAt: "t0", status: "failed" });
+  expect(html).toContain("momus — FAIL");
+  expect(html).not.toContain("momus — PASS");
+  expect(html).toContain("run #3 · t0 · failed");
+});
+
+test("a run still marked running renders FAIL even when every row passed", () => {
+  const passing = rows.filter((r) => r.passed);
+  const html = renderReport(passing, { dev: "d", prod: "p", runId: 4, startedAt: "t0", status: "running" });
+  expect(html).toContain("momus — FAIL");
+  expect(html).toContain("run #4 · t0 · incomplete");
+});
+
+test("a complete all-pass run still renders PASS without a status suffix", () => {
+  const passing = rows.filter((r) => r.passed);
+  const html = renderReport(passing, { dev: "d", prod: "p", runId: 5, startedAt: "t0", status: "complete" });
+  expect(html).toContain("momus — PASS");
+  expect(html).toContain("run #5 · t0</div>");
+});

@@ -70,11 +70,17 @@ function changes(s: { added: number; removed: number }): string {
 
 export function renderReport(
   records: ComparisonRecord[],
-  meta: { dev: string; prod: string; runId?: number; startedAt?: string },
+  meta: { dev: string; prod: string; runId?: number; startedAt?: string; status?: string },
   gate: GateOptions = STRICT_GATE,
 ): string {
   const sorted = [...records].sort((a, b) => rank(b) - rank(a));
   const s = summarize(records, gate);
+  // A run that never completed (failed before comparing, or killed) has rows
+  // that are missing or partial; "all passed" would be a lie. No status means
+  // an in-memory render of rows the caller just produced.
+  const incomplete = meta.status !== undefined && meta.status !== "complete";
+  if (incomplete) s.verdict = "FAIL";
+  const statusLabel = meta.status === "running" ? "incomplete" : meta.status;
   const items = sorted.map(item).join("\n");
   const worst = s.worst
     ? `worst: ${esc(s.worst.path)} @${s.worst.viewport} (${s.worst.pct}%)`
@@ -87,7 +93,7 @@ export function renderReport(
 <header class="${s.verdict}">
   <div class="verdict">momus — ${s.verdict}</div>
   <div class="urls">${esc(meta.dev)} vs ${esc(meta.prod)}</div>
-  ${meta.runId !== undefined ? `<div class="run">run #${meta.runId}${meta.startedAt ? ` · ${esc(meta.startedAt)}` : ""}</div>` : ""}
+  ${meta.runId !== undefined ? `<div class="run">run #${meta.runId}${meta.startedAt ? ` · ${esc(meta.startedAt)}` : ""}${incomplete ? ` · ${esc(statusLabel ?? "")}` : ""}</div>` : ""}
   <div class="counts">${s.total} comparisons · ${s.passed} passed · ${s.failed} failed · ${s.errored} errored${changes(s)}</div>
   <div class="extras">${worst} · viewports: ${s.viewports.join(", ")}</div>
   <div class="filter">

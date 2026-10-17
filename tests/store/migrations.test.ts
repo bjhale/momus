@@ -107,3 +107,19 @@ test("v3: a pre-v3 run keeps its id and reads with empty provenance", () => {
   db.exec(`INSERT INTO runs (started_at, dev_base_url, prod_base_url, config_json, status) VALUES ('s','d','p','{}','complete')`);
   expect((db.query("SELECT max(id) AS id FROM runs").get() as { id: number }).id).toBe(8);
 });
+
+test("v3: allow_added/allow_removed are backfilled from config_json; absent or invalid stays NULL", () => {
+  const file = tmpFile();
+  const raw = track(new Database(file, { create: true }));
+  migrate(raw, MIGRATIONS.slice(0, 2));
+  const ins = raw.query(`INSERT INTO runs (id, started_at, dev_base_url, prod_base_url, config_json, status) VALUES (?, 's','d','p',?,'complete')`);
+  ins.run(1, JSON.stringify({ diff: { allowAdded: true, allowRemoved: false } }));
+  ins.run(2, "{}");
+  ins.run(3, "not json");
+  raw.close();
+  const db = openDb(file);
+  const get = (id: number) => db.query("SELECT allow_added, allow_removed FROM runs WHERE id = ?").get(id);
+  expect(get(1)).toEqual({ allow_added: 1, allow_removed: 0 });
+  expect(get(2)).toEqual({ allow_added: null, allow_removed: null });
+  expect(get(3)).toEqual({ allow_added: null, allow_removed: null });
+});

@@ -183,6 +183,21 @@ test("an all-error re-snapshot keeps the previous baseline byte for byte", async
   expect(Array.from(rows[0]!.image!)).toEqual(Array.from(png(50)));
 });
 
+test("a re-snapshot where some captures fail replaces the baseline, error rows included", async () => {
+  const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
+  const db = openDb(":memory:");
+  await snapshotPipeline({ config, db, createdAt: "t1", discover: async () => ["/", "/old-only"], captureFn: async () => ({ ok: true, png: png(50) }) });
+  await snapshotPipeline({
+    config, db, createdAt: "t2", discover: async () => ["/", "/new"],
+    captureFn: async (url) => url.endsWith("/new") ? { ok: false, error: "timeout" } : { ok: true, png: png(90) },
+  });
+  expect(readSnapshot(db)!.createdAt).toBe("t2");
+  const rows = readBaselineImages(db);
+  expect(rows.map((r) => [r.path, r.status]).sort()).toEqual([["/", "ok"], ["/new", "error"]]);
+  expect(rows.some((r) => r.path === "/old-only")).toBe(false);
+  expect(Array.from(rows.find((r) => r.path === "/")!.image!)).toEqual(Array.from(png(90)));
+});
+
 test("a capture function that throws rolls the baseline back too", async () => {
   const config = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280] });
   const db = openDb(":memory:");

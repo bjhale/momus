@@ -13,7 +13,7 @@ export async function writeReport(db: Database, runId: number, outPath: string, 
   rows ??= readComparisons(db, runId);
   const html = renderReport(
     rows,
-    { dev: run.devBaseUrl, prod: run.prodBaseUrl, runId: run.id, startedAt: run.startedAt },
+    { dev: run.devBaseUrl, prod: run.prodBaseUrl, runId: run.id, startedAt: run.startedAt, status: run.status },
     { allowAdded: run.allowAdded, allowRemoved: run.allowRemoved },
   );
   await Bun.write(outPath, html); // overwrites (spec §6)

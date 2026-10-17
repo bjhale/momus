@@ -36,8 +36,10 @@ as BLOBs in one SQLite file still stands.
   stores the `fail_score` that applied. Together these answer RFC-0002's
   server-ready checklist from the schema alone.
 - **`momus report [--run ID]`** re-renders the latest or a named run with the
-  gate stored on that run, not today's config. It only reads `output.db`: a
-  missing file, an empty DB or an unknown id exits 2 without creating anything.
+  gate stored on that run, not today's config. `report` opens
+  `output.db` like every command, so an old DB is migrated on first open; it
+  never creates a DB file and never touches a browser. A missing file, an empty
+  DB or an unknown id exits 2 without creating anything.
 
 Rejected: default `keepRuns` to 1 (the old behavior) and make history opt-in.
 Approval would then need users to change a setting before it could work, and a
