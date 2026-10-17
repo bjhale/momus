@@ -1,7 +1,8 @@
 // tests/capture/steps.integration.test.ts
 import { test, expect } from "bun:test";
-import { isBrowserInstalled, launchBrowser, type BrowserEngine } from "../../src/capture/browser";
+import { launchBrowser, type BrowserEngine } from "../../src/capture/browser";
 import { runSteps, StepError } from "../../src/capture/steps";
+import { launchable } from "../helpers/engines";
 
 // Each control records what happened to it on window.log, so one page can
 // verify every step kind.
@@ -21,7 +22,7 @@ const PAGE = `<html><body style="height:3000px">
 const ENGINES: BrowserEngine[] = ["chromium", "firefox", "webkit"];
 
 for (const engine of ENGINES) {
-  const maybe = isBrowserInstalled(engine) ? test : test.skip;
+  const maybe = (await launchable(engine)) ? test : test.skip;
 
   maybe(`[${engine}] runs every step kind in order`, async () => {
     const server = Bun.serve({ port: 0, fetch: () => new Response(PAGE, { headers: { "content-type": "text/html" } }) });
