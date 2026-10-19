@@ -356,3 +356,20 @@ test("verify uses the diff pool when one is given", async () => {
   expect(seen).toEqual([0.1]);
   expect(readBaselineImages(db)[0]!.unstableRegions).toEqual([{ x: 1, y: 1, width: 2, height: 2 }]);
 });
+
+test("verify: a second capture that throws keeps the first, and the snapshot commits", async () => {
+  const db = openDb(":memory:");
+  let calls = 0;
+  await snapshotPipeline({
+    config: verifyCfg(true), db, createdAt: "t",
+    discover: async () => ["/"],
+    captureFn: async () => {
+      if (++calls === 2) throw new Error("Target page, context or browser has been closed");
+      return { ok: true, png: png(100) };
+    },
+  });
+  const [row] = readBaselineImages(db);
+  expect(row!.status).toBe("ok");
+  expect(row!.unstableRegions).toBeUndefined();
+  expect(readSnapshot(db)).not.toBeNull();
+});

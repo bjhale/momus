@@ -111,7 +111,10 @@ export async function scopeRequestHeaders(page: Page, url: string, headers?: Rec
 export async function waitForImages(page: Page, maxMs: number): Promise<void> {
   if (maxMs <= 0) return;
   await page.evaluate((budget) => Promise.race([
-    Promise.all(Array.from(document.images, async (img) => {
+    // An image that isn't rendered (display:none, or inside it) can't change
+    // the pixels, and a lazy one there is never even requested: waiting on it
+    // would spend the whole budget on every capture.
+    Promise.all(Array.from(document.images).filter((img) => img.getClientRects().length > 0).map(async (img) => {
       if (!img.complete) {
         await new Promise((r) => {
           img.addEventListener("load", r, { once: true });

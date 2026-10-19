@@ -71,8 +71,9 @@ default, so such a baseline is refused until re-captured
 ([ADR-0032](adr/0032-determinism-defaults-and-old-baselines.md)).
 
 `stabilize.verify` captures each baseline image twice; one that changed is
-stored with its `unstable_regions_json`, and every comparison against it is
-`unstable`: diffed and shown, never counted. `retries` re-captures dev for a
+stored with its `unstable_regions_json`. A comparison against it whose change
+regions all touch those regions is `unstable`: diffed and shown, never
+counted. A change elsewhere is gated as usual. `retries` re-captures dev for a
 compared target that fails the gate; prod is frozen, so a baseline error is
 never retried ([ADR-0034](adr/0034-unstable-and-retries.md)).
 

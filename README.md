@@ -256,8 +256,8 @@ Notes:
   Use narrow selectors: an overly broad `remove` (e.g. `*` or `body`) deletes the
   whole page and yields a blank screenshot.
 - **Repeatable captures.** Before each screenshot momus waits for web fonts
-  and for every `<img>` to load and decode (`waitForImages`, bounded by
-  `timeoutMs`), and emulates `prefers-reduced-motion: reduce` and the configured
+  and for every rendered `<img>` to load and decode (`waitForImages`, bounded by
+  `timeoutMs`; images hidden with `display:none` are skipped), and emulates `prefers-reduced-motion: reduce` and the configured
   `colorScheme`. `clock` pins `Date` to a fixed instant so "posted 3 minutes
   ago" renders the same every time; it is off by default because it can break
   apps that poll. Each of these changes pixels, so each is part of the baseline
@@ -268,9 +268,12 @@ Notes:
   `reducedMotion: "no-preference"` and `waitForImages: false` to keep diffing
   against it.
 - **`verify`** captures every baseline image twice. If the two differ, the
-  target is **unstable**: its comparisons are shown in the report with the
-  changing regions outlined (dashed), but never fail the gate. Mask those regions
-  and re-capture. It doubles the cost of a snapshot, so it is off by default.
+  changing regions are stored with the baseline and outlined (dashed) in the
+  report. A comparison whose changes all fall in those regions is **unstable**:
+  shown, but it doesn't fail the gate, and `run` names the count on its last
+  line. A change anywhere else on the page is gated as usual. Mask the moving
+  regions and re-capture. It doubles the cost of a snapshot, so it is off by
+  default.
 - **`retries`** re-captures dev for a target that failed the gate (or whose dev
   capture errored), up to N times, and fails it only if every attempt fails. The
   report shows how many retries a target needed, so flakiness stays visible. A

@@ -31,22 +31,31 @@ export function diffPngs(aPng: Uint8Array, bPng: Uint8Array, opts: DiffOptions):
     diffColor: DIFF_COLOR, aaColor: [255, 255, 0],
   });
 
-  // Changed = drawn in the diff color (pure red never occurs in pixelmatch's
-  // grayscale background), or outside either side's own bounds. The band
-  // counts as a region: on a pure size change it is the change.
+  // Content changes are clustered within the area both sides cover: drawn in
+  // the diff color (pure red never occurs in pixelmatch's grayscale
+  // background). The pad band is added as up to two strips of its own, right
+  // and bottom: clustered with the rest, an L-shaped band's box is the whole
+  // frame, and a change beside it would merge into it. The band counts as a
+  // region: on a pure size change it is the change.
+  const minW = Math.min(a.width, b.width), minH = Math.min(a.height, b.height);
   const mask = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const p = y * width + x, i = p * 4;
-      if (x >= a.width || y >= a.height || x >= b.width || y >= b.height) {
-        mask[p] = 1;
+      if (x >= minW || y >= minH) {
         out.data[i] = PAD_COLOR[0]; out.data[i + 1] = PAD_COLOR[1]; out.data[i + 2] = PAD_COLOR[2]; out.data[i + 3] = 255;
       } else if (out.data[i] === 255 && out.data[i + 1] === 0 && out.data[i + 2] === 0) {
         mask[p] = 1;
       }
     }
   }
-  const { regions, count } = changeRegions(mask, width, height);
+  const content = changeRegions(mask, width, height);
+  const strips = [
+    ...(width > minW ? [{ x: minW, y: 0, width: width - minW, height }] : []),
+    ...(height > minH ? [{ x: 0, y: minH, width: minW, height: height - minH }] : []),
+  ];
+  const regions = [...strips, ...content.regions].sort((p, q) => q.width * q.height - p.width * p.height).slice(0, 100);
+  const count = content.count + strips.length;
 
   const diffPng = new Uint8Array(PNG.sync.write(out));
   return {

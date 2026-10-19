@@ -11,9 +11,9 @@ apart from content changes.
 
 ## Decision
 
-**Regions are computed in the diff worker**, from pixelmatch's output: a pixel
-drawn in the diff color (pure red, which pixelmatch's grayscale background
-never produces), or outside either side's own bounds. Changed pixels are
+**Regions are computed in the diff worker**, from pixelmatch's output, within
+the area both sides cover: a pixel drawn in the diff color (pure red, which
+pixelmatch's grayscale background never produces). Changed pixels are
 bucketed into 16 px cells. Marked cells that touch, diagonals included, form
 one region, and each box is tight to the real pixels in it. Changes about a
 cell apart merge; changes further apart don't. The 100 largest regions are
@@ -24,8 +24,11 @@ Grid clustering rather than pixel-level connected components: it's linear in
 the image, needs no tuning beyond the cell size, and merges a changed word's
 letters into one box, which is the unit a person reads.
 
-**The pad band counts as a region and is drawn magenta** (`PAD_COLOR`) over
-the diff image, so it reads apart from red content changes. On a pure size
+**The pad band is added as up to two regions of its own**, a right strip and a
+bottom strip, rather than clustered with the rest: when both width and height
+differ, an L-shaped band's bounding box is the whole frame, and a content
+change beside the band would merge into it. **It is drawn magenta**
+(`PAD_COLOR`) over the diff image, so it reads apart from red content changes. On a pure size
 change the band *is* the change, and leaving it out would report "0 regions"
 on a failing page. The score still counts it: a size change is a regression
 ([ADR-0003](0003-pad-never-scale.md)).
@@ -42,5 +45,7 @@ track the image however the page scales it, without JavaScript
 - `DiffPool.submit` takes `{ threshold, includeAA }` instead of a bare
   threshold, and AA detection is now a setting (`diff.includeAA`, default
   false, which keeps today's behavior).
-- Rows from before migration v5 have no per-side sizes; the report draws their
-  regions on the diff only, and shows no size note.
+- Rows from before migration v5 have no regions and no per-side sizes; the
+  report shows them as before, with no outlines and no size note.
+- Where both sizes differ, the bottom-right corner is outside both images, yet
+  painted magenta with the band.

@@ -17,15 +17,22 @@ is captured: a run against a frozen baseline never touches prod
 ([ADR-0011](0011-run-always-diffs-a-baseline.md)). The two captures are diffed
 at `diff.threshold` with `diff.includeAA`. Any differing pixel marks the image
 unstable, and the change regions are stored on it (`unstable_regions_json`).
-The first capture is the one kept. If the second capture fails, the first is
-kept unmarked: a failed capture says nothing about whether the pixels move.
+The first capture is the one kept. If the second capture fails (or throws), the first
+is kept unmarked: a failed capture says nothing about whether the pixels move,
+and it must not roll back a baseline that captured fine once.
 
-**A comparison against an unstable image is `unstable`**: diffed, stored and
-shown with the moving regions outlined, but never failing the gate, never in
-the passed/failed counts, and never retried. Its diff can't be trusted in
-either direction, and the fix is a mask, not a code change. It is counted in
-the report header so it can't go unnoticed. An error on that comparison (dev
-failed to capture) is still an error.
+**A comparison against an unstable image is `unstable` only if every change
+region touches a region the baseline moved in** (within one 16 px clustering
+cell). Then it is diffed, stored and shown with the moving regions outlined
+(dashed), but doesn't fail the gate, isn't in the passed/failed counts, and
+isn't retried: that diff can't be trusted in either direction, and the fix is
+a mask, not a code change. A change anywhere else is gated as usual, and
+retried like any failure, with the moving regions still drawn. Waiving the
+whole page would let one blinking caret hide a broken layout. A capped region
+list (over 100) can't prove every change is covered, so it is gated. Unstable
+comparisons are counted in the report header and on `run`'s last stdout line,
+since they don't move the exit code. An error on that comparison (dev failed
+to capture) is still an error.
 
 **`retries` is top-level** (as the RFC writes it), an integer 0–10, default 0.
 It re-captures **dev**, never prod, since the baseline is frozen. A compared
@@ -38,9 +45,8 @@ Neither setting is gated: neither changes the pixels of a capture.
 
 ## Consequences
 
-- A page that is unstable forever is never tested. That is visible (an
-  UNSTABLE badge and a header count), not silent, and masking the regions
-  shown is the way out.
+- The moving regions themselves are never tested until masked, and a change
+  right next to one can hide in it. The rest of the page is still gated.
 - Retries can turn a flaky dev into a pass. The count stays on the row, so the
   flake is reviewable rather than swallowed.
 - `verify` doubles snapshot time; it is opt-in for that reason.

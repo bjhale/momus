@@ -30,6 +30,8 @@ const pages: Record<string, string> = {
   // Below the lazy-load distance, so the image is first requested by autoScroll.
   // The page already reached networkidle by then, and that state is sticky.
   "/lazy": `<body style="margin:0"><div style="height:6000px"></div><img loading="lazy" src="/slow.png" style="display:block"></body>`,
+  // Never requested: a lazy image inside display:none never loads or errors.
+  "/hidden-lazy": `<body style="margin:0"><div style="display:none"><img loading="lazy" src="/slow.png"></div><p>visible</p></body>`,
   "/lazy-never": `<body style="margin:0"><div style="height:6000px"></div><img loading="lazy" src="/never.png" style="display:block"></body>`,
 };
 
@@ -107,4 +109,11 @@ maybe("waitForImages gives up on an image that never loads, within timeoutMs", a
   const res = await capture(browser, url("/lazy-never"), 375, { ...STAB, waitUntil: "networkidle", timeoutMs: 3000 });
   expect(res.ok).toBe(true);
   expect(Date.now() - t0).toBeLessThan(6000);
+});
+
+maybe("waitForImages doesn't wait for an image that isn't rendered", async () => {
+  const t0 = Date.now();
+  const res = await capture(browser, url("/hidden-lazy"), 375, { ...STAB, timeoutMs: 10000 });
+  expect(res.ok).toBe(true);
+  expect(Date.now() - t0).toBeLessThan(5000);
 });

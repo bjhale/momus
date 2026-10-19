@@ -12,6 +12,7 @@ import { captureSeams } from "./capture-seams";
 import { exitCodeFor } from "../pipeline/verdict";
 import { writeReport } from "../report/report";
 import type { ResolvedConfig } from "../config/schema";
+import type { ComparisonRecord } from "../types";
 import { scenariosSource } from "../targets/scenarios";
 import { makeProgress } from "../progress";
 
@@ -113,6 +114,14 @@ async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database
   } else {
     console.log(`Reused prod baseline from ${result.createdAt}. Refresh with \`momus snapshot\`.`);
   }
-  console.log(`Wrote ${config.output.report} for run #${result.runId} (${rows.length} comparisons). Exit ${code}.`);
+  console.log(resultLine(config.output.report, result.runId, rows, code));
   return code;
+}
+
+/** The run's last stdout line. Unstable targets are named here because they
+ * don't move the exit code: a CI log is otherwise all a reviewer sees. */
+export function resultLine(report: string, runId: number, rows: ComparisonRecord[], code: number): string {
+  const unstable = rows.filter((r) => r.status === "unstable").length;
+  const detail = `${rows.length} comparisons${unstable ? `; ${unstable} unstable, not gated` : ""}`;
+  return `Wrote ${report} for run #${runId} (${detail}). Exit ${code}.`;
 }

@@ -175,3 +175,10 @@ test("rendering: pinned vs host conflicts both ways; an old baseline reads as ho
   expect(baselineConflict(c, snapFrom(c), "host")).toBeNull();
   expect(baselineConflict(c, { ...snapFrom(c), rendering: "pinned" }, "pinned")).toBeNull();
 });
+
+test("a pinned run against a host baseline explains that older baselines read as host", () => {
+  const c = cfg();
+  const msg = baselineConflict(c, snapFrom(c), "pinned")!;
+  expect(msg).toContain("predates pinned rendering");
+  expect(msg).toContain("momus snapshot");
+});

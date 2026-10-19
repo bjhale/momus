@@ -4,6 +4,7 @@ import { PNG } from "pngjs";
 import { runPipeline, configHash, type Job } from "../../src/pipeline/run";
 import { openDb, readComparisons, readRun } from "../../src/store/db";
 import { MOMUS_VERSION } from "../../src/version";
+import { exitCodeFor } from "../../src/pipeline/verdict";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
 import type { DiffOptions } from "../../src/diff/diff";
@@ -508,4 +509,57 @@ test("a baseline (prod) error is never retried", async () => {
   expect(devCalls).toBe(1);
   expect(r!.status).toBe("error");
   expect(r!.retries).toBe(0);
+});
+
+// --- Final review: unstable covers only the regions that moved in the baseline ---
+
+const moving = [{ x: 0, y: 0, width: 50, height: 20 }];
+function regionPool(regions: Array<{ x: number; y: number; width: number; height: number }>, score = 0.5) {
+  return {
+    submit: async (a: Uint8Array): Promise<DiffResponse> =>
+      ({ ...okDiff(a), diffPixels: 9, diffScore: score, regions, regionCount: regions.length }),
+    close: async () => {},
+  };
+}
+const unstableProd = async () => ({ ok: true as const, png: png(4, 4, 100), unstableRegions: moving });
+
+test("changes only where the baseline moves: unstable, not failing", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg06(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: okPng, getProd: unstableProd,
+    diffPool: regionPool([{ x: 10, y: 5, width: 5, height: 5 }]),
+  });
+  const rows = readComparisons(db, 1);
+  expect(rows[0]!.status).toBe("unstable");
+  expect(exitCodeFor(rows)).toBe(0);
+});
+
+test("a change outside the moving regions is gated as usual, unstable regions still shown", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg06(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: okPng, getProd: unstableProd,
+    diffPool: regionPool([{ x: 10, y: 5, width: 5, height: 5 }, { x: 400, y: 900, width: 300, height: 200 }]),
+  });
+  const rows = readComparisons(db, 1);
+  expect(rows[0]!.status).toBe("ok");
+  expect(rows[0]!.passed).toBe(false);
+  expect(rows[0]!.unstableRegions).toEqual(moving);
+  expect(exitCodeFor(rows)).toBe(1);
+});
+
+test("a change outside the moving regions is retried like any failure", async () => {
+  const db = openDb(":memory:");
+  let devCalls = 0;
+  await runPipeline({
+    config: cfg06({ retries: 2 }), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => { devCalls++; return okPng(); }, getProd: unstableProd,
+    diffPool: regionPool([{ x: 400, y: 900, width: 300, height: 200 }]),
+  });
+  expect(devCalls).toBe(3);
+  expect(readComparisons(db, 1)[0]!.retries).toBe(2);
 });

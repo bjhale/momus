@@ -1,6 +1,6 @@
 // src/pipeline/verdict.ts
 import { matchPath } from "../glob";
-import type { ComparisonRecord } from "../types";
+import type { ComparisonRecord, Region } from "../types";
 
 export interface Override { path: string; failScore: number }
 
@@ -11,6 +11,18 @@ export function resolveFailScore(path: string, globalFailScore: number, override
 
 export function passed(diffScore: number, failScore: number): boolean {
   return diffScore <= failScore;
+}
+
+/** True when every change region touches a region the baseline moved in
+ * (`stabilize.verify`), give or take one clustering cell. Only then is a
+ * comparison `unstable`: a change anywhere else is gated as usual, so one
+ * blinking caret can't waive the rest of the page (ADR-0034). A capped region
+ * list (`count` above its length) can't prove that, so it doesn't. */
+export function withinUnstable(regions: Region[], count: number, unstable: Region[], margin = 16): boolean {
+  if (count > regions.length) return false;
+  return regions.every((r) => unstable.some((u) =>
+    r.x < u.x + u.width + margin && u.x - margin < r.x + r.width &&
+    r.y < u.y + u.height + margin && u.y - margin < r.y + r.height));
 }
 
 /** Gate opt-outs for statuses that are changes to review, not failures to fix. */

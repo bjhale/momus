@@ -11,7 +11,7 @@ import { canonicalJson, type Recipe, type TargetSourceName } from "../targets/ta
 import { startRun, saveComparison, finishRun, type CiMetadata } from "../store/db";
 import { MOMUS_VERSION } from "../version";
 import { mapWithConcurrency } from "./queue";
-import { resolveFailScore, passed, failsGate, STRICT_GATE } from "./verdict";
+import { resolveFailScore, passed, failsGate, withinUnstable, STRICT_GATE } from "./verdict";
 
 /** sha256 of the resolved config (setup secrets redacted first, so none is
  * ever hashed) with sorted keys, so two runs with the same
@@ -102,6 +102,11 @@ async function compareOnce(
   rec.regions = diff.regions; rec.regionCount = diff.regionCount;
   rec.failScore = failScore;
   rec.passed = passed(diff.diffScore!, failScore);
+  // The baseline moves here: shown either way, waived only if that's all that changed.
+  if (prod.unstableRegions) {
+    rec.unstableRegions = prod.unstableRegions;
+    if (withinUnstable(rec.regions ?? [], rec.regionCount ?? 0, prod.unstableRegions)) rec.status = "unstable";
+  }
   return rec;
 }
 
@@ -156,20 +161,15 @@ export async function runPipeline(args: RunPipelineArgs): Promise<number> {
         const failScore = resolveFailScore(job.path, config.diff.failScore, config.diff.overrides);
         // Prod is the frozen baseline, so only dev is re-captured, and only
         // while a retry could change the outcome: never for a baseline error
-        // or an unstable baseline (ADR-0034).
+        // (ADR-0034). An unstable row doesn't fail the gate, so it stops too.
         let dev = firstDev, retries = 0;
         let out = await compareOnce(args, rec, dev, prod, failScore);
-        while (retries < config.retries && prod.ok && !prod.unstableRegions && failsGate(out, STRICT_GATE)) {
+        while (retries < config.retries && prod.ok && failsGate(out, STRICT_GATE)) {
           retries++;
           dev = await args.getDev(job);
           out = await compareOnce(args, rec, dev, prod, failScore);
         }
         out.retries = retries;
-        // Shown for review, never counted: the baseline itself moved (ADR-0034).
-        if (out.status === "ok" && prod.unstableRegions) {
-          out.status = "unstable";
-          out.unstableRegions = prod.unstableRegions;
-        }
         saveComparison(db, runId, out);
       } catch (err) {
         rec.status = "error";

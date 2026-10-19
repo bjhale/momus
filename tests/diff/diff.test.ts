@@ -100,3 +100,19 @@ test("includeAA: true counts anti-aliased pixels that detection would skip", () 
   const on = diffPngs(draw(0), draw(1), { threshold: 0.1, includeAA: true });
   expect(on.diffPixels).toBeGreaterThan(off.diffPixels);
 });
+
+test("when width and height both differ, each pad strip is its own region", () => {
+  const r = diffPngs(pngBuffer(100, 200, [200, 200, 200, 255]), pngBuffer(120, 150, [200, 200, 200, 255]), OPTS);
+  expect(r.regionCount).toBe(2);
+  expect(r.regions).toContainEqual({ x: 100, y: 0, width: 20, height: 200 });
+  expect(r.regions).toContainEqual({ x: 0, y: 150, width: 100, height: 50 });
+});
+
+test("a content change beside the pad band stays its own region", () => {
+  const a = PNG.sync.read(Buffer.from(pngBuffer(20, 20, [255, 255, 255, 255])));
+  a.data.set([0, 0, 0, 255], (18 * 20 + 5) * 4);
+  const r = diffPngs(new Uint8Array(PNG.sync.write(a)), pngBuffer(20, 40, [255, 255, 255, 255]), OPTS);
+  expect(r.regionCount).toBe(2);
+  expect(r.regions).toContainEqual({ x: 5, y: 18, width: 1, height: 1 });
+  expect(r.regions).toContainEqual({ x: 0, y: 20, width: 20, height: 20 });
+});

@@ -38,6 +38,12 @@ pixels.
 **Fonts were already awaited** before this RFC, unconditionally, so that wait
 stays ungated.
 
+**The image wait skips images that aren't rendered** (no client rects:
+`display:none`, or inside it). They can't change pixels, and a lazy one there
+is never requested, so waiting on it would spend the whole `timeoutMs` on
+every capture. Images a scenario step reveals are not waited for: the wait
+runs before the steps.
+
 **The image wait runs inside the page with its own timer.** Racing a
 Node-side timeout left a `page.evaluate` pending on an image that never loads,
 and under Bun a later `browser.close()` then hung. A related finding: the

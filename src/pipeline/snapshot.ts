@@ -39,14 +39,20 @@ export interface SnapshotPipelineArgs {
 async function verifyCapture(
   args: SnapshotPipelineArgs, first: Uint8Array, url: string, viewport: number, recipe?: Recipe,
 ): Promise<Region[] | undefined> {
-  const again = await args.captureFn(url, viewport, args.config, recipe);
-  if (!again.ok) return undefined;
-  const opts = { threshold: args.config.diff.threshold, includeAA: args.config.diff.includeAA };
-  const diff = args.diffPool
-    ? await args.diffPool.submit(first, again.png!, opts)
-    : { ok: true, ...diffPngs(first, again.png!, opts) };
-  if (!diff.ok || !diff.diffPixels) return undefined;
-  return diff.regions ?? [];
+  // A throw here would roll back the whole baseline over a capture that
+  // already succeeded once; it proves nothing, like a failed capture.
+  try {
+    const again = await args.captureFn(url, viewport, args.config, recipe);
+    if (!again.ok) return undefined;
+    const opts = { threshold: args.config.diff.threshold, includeAA: args.config.diff.includeAA };
+    const diff = args.diffPool
+      ? await args.diffPool.submit(first, again.png!, opts)
+      : { ok: true, ...diffPngs(first, again.png!, opts) };
+    if (!diff.ok || !diff.diffPixels) return undefined;
+    return diff.regions ?? [];
+  } catch {
+    return undefined;
+  }
 }
 
 /** Every prod capture failed, so there is nothing worth freezing. Thrown after

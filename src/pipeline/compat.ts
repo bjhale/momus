@@ -43,8 +43,13 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta,
   // a momus change, not a reason to refuse every baseline (ADR-0033).
   const baseRendering = snapshot.rendering ?? "host";
   if (rendering !== baseRendering) {
+    // A Docker user upgrading lands here with a baseline captured in the
+    // image: it reads as host because pinning didn't exist yet.
+    const older = rendering === "pinned"
+      ? "If this baseline was captured in the Docker image, it predates pinned rendering and reads as host. "
+      : "";
     return `rendering differs: this run is "${rendering}" vs baseline "${baseRendering}". ` +
-      "A baseline from the Docker image (pinned) only diffs against captures made in it, and the reverse. " +
+      "A baseline from the Docker image (pinned) only diffs against captures made in it, and the reverse. " + older +
       "Run where the baseline was captured, or re-capture it with `momus run --snapshot` (or `momus snapshot`).";
   }
 
