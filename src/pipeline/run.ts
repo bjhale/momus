@@ -11,7 +11,7 @@ import { canonicalJson, type Recipe, type TargetSourceName } from "../targets/ta
 import { startRun, saveComparison, finishRun, type CiMetadata } from "../store/db";
 import { MOMUS_VERSION } from "../version";
 import { mapWithConcurrency } from "./queue";
-import { resolveFailScore, passed } from "./verdict";
+import { resolveFailScore, passed, failsGate, STRICT_GATE } from "./verdict";
 
 /** sha256 of the resolved config (setup secrets redacted first, so none is
  * ever hashed) with sorted keys, so two runs with the same
@@ -72,6 +72,39 @@ export interface RunPipelineArgs {
   ci?: CiMetadata;
 }
 
+/** One dev capture against prod: a fresh record built on `base`, never
+ * mutating it, so a retry starts clean. A capture failure keeps the side that
+ * rendered, so the report can show it (RFC-0006). */
+async function compareOnce(
+  args: RunPipelineArgs, base: ComparisonRecord, dev: CaptureResult, prod: CaptureResult, failScore: number,
+): Promise<ComparisonRecord> {
+  const rec: ComparisonRecord = { ...base };
+  if (!dev.ok || !prod.ok) {
+    rec.status = "error";
+    rec.error = [dev.ok ? null : `dev: ${dev.error}`, prod.ok ? null : `prod: ${prod.error}`]
+      .filter(Boolean).join("; ");
+    if (dev.ok) rec.devImage = dev.png;
+    if (prod.ok) rec.prodImage = prod.png;
+    return rec;
+  }
+  rec.devImage = dev.png; rec.prodImage = prod.png;
+  const { diff: d } = args.config;
+  const diff = await args.diffPool.submit(dev.png!, prod.png!, { threshold: d.threshold, includeAA: d.includeAA });
+  if (!diff.ok) {
+    rec.status = "error"; rec.error = `diff: ${diff.error}`;
+    return rec;
+  }
+  rec.diffImage = diff.diffPng; rec.width = diff.width; rec.height = diff.height;
+  rec.diffPixels = diff.diffPixels; rec.diffScore = diff.diffScore;
+  // Diff a = dev, b = prod.
+  rec.devWidth = diff.aWidth; rec.devHeight = diff.aHeight;
+  rec.prodWidth = diff.bWidth; rec.prodHeight = diff.bHeight;
+  rec.regions = diff.regions; rec.regionCount = diff.regionCount;
+  rec.failScore = failScore;
+  rec.passed = passed(diff.diffScore!, failScore);
+  return rec;
+}
+
 export async function runPipeline(args: RunPipelineArgs): Promise<number> {
   const { config, db } = args;
   const runId = startRun(db, {
@@ -119,30 +152,20 @@ export async function runPipeline(args: RunPipelineArgs): Promise<number> {
           return;
         }
 
-        const [dev, prod] = await Promise.all([args.getDev(job), args.getProd(job)]);
-
-        if (!dev.ok || !prod.ok) {
-          rec.status = "error";
-          rec.error = [dev.ok ? null : `dev: ${dev.error}`, prod.ok ? null : `prod: ${prod.error}`]
-            .filter(Boolean).join("; ");
-          saveComparison(db, runId, rec);
-          return;
-        }
-
-        rec.devImage = dev.png; rec.prodImage = prod.png;
-        const diff = await args.diffPool.submit(dev.png!, prod.png!,
-          { threshold: config.diff.threshold, includeAA: config.diff.includeAA });
-        if (!diff.ok) {
-          rec.status = "error"; rec.error = `diff: ${diff.error}`;
-          saveComparison(db, runId, rec);
-          return;
-        }
-        rec.diffImage = diff.diffPng; rec.width = diff.width; rec.height = diff.height;
-        rec.diffPixels = diff.diffPixels; rec.diffScore = diff.diffScore;
+        const [firstDev, prod] = await Promise.all([args.getDev(job), args.getProd(job)]);
         const failScore = resolveFailScore(job.path, config.diff.failScore, config.diff.overrides);
-        rec.failScore = failScore;
-        rec.passed = passed(diff.diffScore!, failScore);
-        saveComparison(db, runId, rec);
+        // Prod is the frozen baseline, so only dev is re-captured, and only
+        // while a retry could change the outcome: never for a baseline error
+        // or an unstable baseline (ADR-0034).
+        let dev = firstDev, retries = 0;
+        let out = await compareOnce(args, rec, dev, prod, failScore);
+        while (retries < config.retries && prod.ok && !prod.unstableRegions && failsGate(out, STRICT_GATE)) {
+          retries++;
+          dev = await args.getDev(job);
+          out = await compareOnce(args, rec, dev, prod, failScore);
+        }
+        out.retries = retries;
+        saveComparison(db, runId, out);
       } catch (err) {
         rec.status = "error";
         rec.error = err instanceof Error ? err.message : String(err);

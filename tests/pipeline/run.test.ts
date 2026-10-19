@@ -380,3 +380,132 @@ test("configHash ignores key order", () => {
   expect(configHash(b)).toBe(configHash(a));
   expect(configHash(a)).toMatch(/^[0-9a-f]{64}$/);
 });
+
+// --- RFC-0006: one-sided images, sizes and regions, retries ---
+
+const cfg06 = (over: Record<string, unknown> = {}) =>
+  ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280], ...over });
+const noDiff = { submit: async (a: Uint8Array) => okDiff(a), close: async () => {} };
+
+test("a failed prod capture keeps the dev image on the error row", async () => {
+  const db = openDb(":memory:");
+  const devPng = png(4, 4, 10);
+  await runPipeline({
+    config: cfg06(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => ({ ok: true, png: devPng }),
+    getProd: async () => ({ ok: false, error: "HTTP 404" }),
+    diffPool: noDiff,
+  });
+  const [r] = readComparisons(db, 1);
+  expect(r!.status).toBe("error");
+  expect(Array.from(r!.devImage!)).toEqual(Array.from(devPng));
+  expect(r!.prodImage).toBeUndefined();
+});
+
+test("a failed dev capture keeps the prod image on the error row", async () => {
+  const db = openDb(":memory:");
+  const prodPng = png(4, 4, 20);
+  await runPipeline({
+    config: cfg06(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => ({ ok: false, error: "timeout" }),
+    getProd: async () => ({ ok: true, png: prodPng }),
+    diffPool: noDiff,
+  });
+  const [r] = readComparisons(db, 1);
+  expect(r!.status).toBe("error");
+  expect(Array.from(r!.prodImage!)).toEqual(Array.from(prodPng));
+  expect(r!.devImage).toBeUndefined();
+});
+
+test("a compared row stores each side's size and the change regions", async () => {
+  const db = openDb(":memory:");
+  await runPipeline({
+    config: cfg06(), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: okPng, getProd: okPng,
+    diffPool: {
+      submit: async (a: Uint8Array) => ({
+        ...okDiff(a), aWidth: 4, aHeight: 6, bWidth: 3, bHeight: 4,
+        regions: [{ x: 0, y: 4, width: 4, height: 2 }], regionCount: 9,
+      }),
+      close: async () => {},
+    },
+  });
+  const [r] = readComparisons(db, 1);
+  expect([r!.devWidth, r!.devHeight, r!.prodWidth, r!.prodHeight]).toEqual([4, 6, 3, 4]);
+  expect(r!.regions).toEqual([{ x: 0, y: 4, width: 4, height: 2 }]);
+  expect(r!.regionCount).toBe(9);
+  expect(r!.retries).toBe(0);
+});
+
+/** A pool whose successive diffs score from `scores`, one per call. */
+function scoring(scores: number[]) {
+  let i = 0;
+  return {
+    submit: async (a: Uint8Array): Promise<DiffResponse> => ({ ...okDiff(a), diffScore: scores[i++] ?? 0 }),
+    close: async () => {},
+  };
+}
+
+test("retries re-captures dev until it passes, and records how many", async () => {
+  const db = openDb(":memory:");
+  let devCalls = 0;
+  await runPipeline({
+    config: cfg06({ retries: 2 }), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => { devCalls++; return okPng(); }, getProd: okPng,
+    diffPool: scoring([0.5, 0.5, 0]),
+  });
+  const [r] = readComparisons(db, 1);
+  expect(devCalls).toBe(3);
+  expect(r!.passed).toBe(true);
+  expect(r!.retries).toBe(2);
+});
+
+test("retries fail the target only when every attempt fails", async () => {
+  const db = openDb(":memory:");
+  let devCalls = 0;
+  await runPipeline({
+    config: cfg06({ retries: 2 }), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => { devCalls++; return okPng(); }, getProd: okPng,
+    diffPool: scoring([0.5, 0.5, 0.5, 0.5]),
+  });
+  const [r] = readComparisons(db, 1);
+  expect(devCalls).toBe(3);
+  expect(r!.passed).toBe(false);
+  expect(r!.retries).toBe(2);
+});
+
+test("retries cover a dev capture error", async () => {
+  const db = openDb(":memory:");
+  let devCalls = 0;
+  await runPipeline({
+    config: cfg06({ retries: 2 }), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => (++devCalls === 1 ? { ok: false, error: "timeout" } : okPng()), getProd: okPng,
+    diffPool: noDiff,
+  });
+  const [r] = readComparisons(db, 1);
+  expect(r!.status).toBe("ok");
+  expect(r!.error).toBeUndefined();
+  expect(r!.retries).toBe(1);
+});
+
+test("a baseline (prod) error is never retried", async () => {
+  const db = openDb(":memory:");
+  let devCalls = 0;
+  await runPipeline({
+    config: cfg06({ retries: 3 }), db, startedAt: "s", finishedAt: "f",
+    listJobs: async () => jobs(["/"], [1280]),
+    getDev: async () => { devCalls++; return okPng(); },
+    getProd: async () => ({ ok: false, error: "prod capture failed in snapshot" }),
+    diffPool: noDiff,
+  });
+  const [r] = readComparisons(db, 1);
+  expect(devCalls).toBe(1);
+  expect(r!.status).toBe("error");
+  expect(r!.retries).toBe(0);
+});

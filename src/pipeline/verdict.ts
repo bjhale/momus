@@ -23,6 +23,9 @@ export function failsGate(r: ComparisonRecord, gate: GateOptions): boolean {
   if (r.status === "error") return true;
   if (r.status === "added") return !gate.allowAdded;
   if (r.status === "removed") return !gate.allowRemoved;
+  // The baseline itself wasn't repeatable, so its diff can't be trusted
+  // either way; it's shown for review, not counted (ADR-0034).
+  if (r.status === "unstable") return false;
   return r.passed === false;
 }
 

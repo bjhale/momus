@@ -1,6 +1,6 @@
 // tests/pipeline/verdict.test.ts
 import { test, expect } from "bun:test";
-import { resolveFailScore, passed, exitCodeFor, failsGate } from "../../src/pipeline/verdict";
+import { resolveFailScore, passed, exitCodeFor, failsGate, STRICT_GATE } from "../../src/pipeline/verdict";
 import type { ComparisonRecord } from "../../src/types";
 
 const overrides = [{ path: "/blog/**", failScore: 0.05 }];
@@ -43,4 +43,10 @@ test("allow flags never excuse an error or a diff failure", () => {
   expect(exitCodeFor([rec("error")], all)).toBe(1);
   expect(exitCodeFor([rec("ok", false)], all)).toBe(1);
   expect(failsGate(rec("ok", true), all)).toBe(false);
+});
+
+test("an unstable row never fails the gate, whatever its diff", () => {
+  const r = { path: "/", viewport: 1, devUrl: "d", prodUrl: "p", status: "unstable" as const, passed: false };
+  expect(failsGate(r, STRICT_GATE)).toBe(false);
+  expect(exitCodeFor([r])).toBe(0);
 });
