@@ -1,10 +1,12 @@
 // tests/capture/determinism.integration.test.ts
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { PNG } from "pngjs";
-import { isBrowserInstalled, launchBrowser } from "../../src/capture/browser";
+import { launchBrowser } from "../../src/capture/browser";
 import { capture, type StabilizeOptions } from "../../src/capture/screenshot";
+import { isolated, launchable } from "../helpers/engines";
 
-const installed = isBrowserInstalled();
+// Isolated: in the shared suite process this file left later closes hanging.
+const installed = isolated("determinism") && await launchable("chromium");
 const maybe = installed ? test : test.skip;
 
 const STAB: StabilizeOptions = {
@@ -32,6 +34,8 @@ const pages: Record<string, string> = {
 };
 
 let server: ReturnType<typeof Bun.serve>;
+// One browser per file: each launch/close cycle risks Bun's intermittent
+// child-process hang on close (see setup.integration.test.ts).
 let browser: Awaited<ReturnType<typeof launchBrowser>>;
 beforeAll(async () => {
   server = Bun.serve({
@@ -42,7 +46,7 @@ beforeAll(async () => {
         await Bun.sleep(800);
         return new Response(new Uint8Array(TALL), { headers: { "content-type": "image/png" } });
       }
-      if (path === "/never.png") return new Promise<Response>(() => {});
+      if (path === "/never.png") return new Promise<Response>(() => {}); // stop(true) ends it
       const body = pages[path];
       return body === undefined
         ? new Response("not found", { status: 404 })
@@ -51,9 +55,11 @@ beforeAll(async () => {
   });
   if (installed) browser = await launchBrowser();
 });
+// Server first: stop(true) drops the /never.png request still open, and a
+// browser closed with a request in flight left later files' closes hanging.
 afterAll(async () => {
+  await server.stop(true);
   await browser?.close();
-  server.stop(true);
 });
 
 const url = (p: string) => `http://localhost:${server.port}${p}`;

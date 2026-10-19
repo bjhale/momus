@@ -35,3 +35,11 @@ function pickEngines(): BrowserEngine[] {
 // launches fail intermittently (Bun spawn "Failed to connect"), so each
 // non-default engine runs in its own process via `bun run test:engines`.
 export const TEST_ENGINES: BrowserEngine[] = pickEngines();
+
+/** A browser file that tips Bun's child-process hang (a close that never
+ * settles, in whichever file launches next) when it shares a process with the
+ * rest of the suite. It runs only when MOMUS_ISOLATED names it, which
+ * `bun run test:isolated` does, one process per file (ADR-0036). */
+export function isolated(name: string): boolean {
+  return process.env.MOMUS_ISOLATED === name;
+}

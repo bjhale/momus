@@ -105,11 +105,13 @@ export async function scopeRequestHeaders(page: Page, url: string, headers?: Rec
 /** Wait until every `<img>` has loaded (or failed) and decoded, bounded by
  * `maxMs`. Needed after autoScroll: an image it triggered starts loading after
  * the page already reached networkidle, and Playwright's load states are
- * sticky, so waiting for networkidle again returns at once. */
+ * sticky, so waiting for networkidle again returns at once. The bound is
+ * inside the page, so the evaluate always settles: one left pending on an
+ * image that never loads made a later browser.close() hang under Bun. */
 export async function waitForImages(page: Page, maxMs: number): Promise<void> {
   if (maxMs <= 0) return;
-  await Promise.race([
-    page.evaluate(() => Promise.all(Array.from(document.images, async (img) => {
+  await page.evaluate((budget) => Promise.race([
+    Promise.all(Array.from(document.images, async (img) => {
       if (!img.complete) {
         await new Promise((r) => {
           img.addEventListener("load", r, { once: true });
@@ -118,9 +120,10 @@ export async function waitForImages(page: Page, maxMs: number): Promise<void> {
       }
       // A broken image rejects decode(); it's as rendered as it will get.
       await img.decode().catch(() => {});
-    }))),
-    page.waitForTimeout(maxMs),
-  ]);
+    })),
+    // Timers keep running under stabilize.clock (setFixedTime pins only Date).
+    new Promise((r) => setTimeout(r, budget)),
+  ]), maxMs);
 }
 
 export interface CaptureExtras {
