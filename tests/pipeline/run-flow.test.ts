@@ -531,3 +531,26 @@ test("setup secrets never reach the .sqlite", async () => {
   expect(dump).not.toContain("devsecret");
   expect(dump).not.toContain("prodsecret");
 });
+
+test("an unstable baseline image makes an unstable comparison, which doesn't fail the gate", async () => {
+  const db = openDb(":memory:");
+  const failing = {
+    submit: async (a: Uint8Array): Promise<DiffResponse> => ({
+      ...okDiff(a), diffPixels: 16, diffScore: 1, regions: [{ x: 0, y: 0, width: 4, height: 4 }], regionCount: 1,
+    }),
+    close: async () => {},
+  };
+  const res = await runFlow({
+    config: cfg({ stabilize: { verify: true } }), db, now: "t",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(200) }),
+    diffPool: failing,
+  });
+  expect(res.ok).toBe(true);
+  const rows = readComparisons(db, latestRunId(db)!);
+  expect(rows.map((r) => r.status)).toEqual(["unstable"]);
+  expect(rows[0]!.unstableRegions).toEqual([{ x: 0, y: 0, width: 4, height: 4 }]);
+  expect(rows[0]!.passed).toBe(false);
+  expect(exitCodeFor(rows)).toBe(0);
+});

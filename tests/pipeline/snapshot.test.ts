@@ -273,3 +273,86 @@ test("a setup failure rejects, captures nothing, and keeps the previous baseline
   expect(captured).toBe(false);
   expect(readSnapshot(db)!.createdAt).toBe("t1");
 });
+
+// --- RFC-0006: stabilize.verify ---
+
+/** Opaque gray: png(v) also sets alpha to v, so two of those can blend alike. */
+function opaque(v: number): Uint8Array {
+  const p = new PNG({ width: 4, height: 4 });
+  for (let i = 0; i < 16; i++) p.data.set([v, v, v, 255], i * 4);
+  return new Uint8Array(PNG.sync.write(p));
+}
+
+const verifyCfg = (verify: boolean) =>
+  ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com", viewports: [1280], stabilize: { verify } });
+
+test("verify: a target that renders differently twice is stored unstable, keeping the first capture", async () => {
+  const db = openDb(":memory:");
+  let calls = 0;
+  await snapshotPipeline({
+    config: verifyCfg(true), db, createdAt: "t",
+    discover: async () => ["/"],
+    captureFn: async () => ({ ok: true, png: opaque(++calls === 1 ? 0 : 255) }),
+  });
+  expect(calls).toBe(2);
+  const [row] = readBaselineImages(db);
+  expect(row!.status).toBe("ok");
+  expect(Array.from(row!.image!)).toEqual(Array.from(opaque(0)));
+  expect(row!.unstableRegions).toEqual([{ x: 0, y: 0, width: 4, height: 4 }]);
+});
+
+test("verify: identical captures are not unstable", async () => {
+  const db = openDb(":memory:");
+  let calls = 0;
+  await snapshotPipeline({
+    config: verifyCfg(true), db, createdAt: "t",
+    discover: async () => ["/", "/a"],
+    captureFn: async () => { calls++; return { ok: true, png: png(100) }; },
+  });
+  expect(calls).toBe(4);
+  for (const r of readBaselineImages(db)) expect(r.unstableRegions).toBeUndefined();
+});
+
+test("verify off: one capture per target", async () => {
+  const db = openDb(":memory:");
+  let calls = 0;
+  await snapshotPipeline({
+    config: verifyCfg(false), db, createdAt: "t",
+    discover: async () => ["/", "/a"],
+    captureFn: async (_u, _v, _c) => ({ ok: true, png: png(++calls) }),
+  });
+  expect(calls).toBe(2);
+});
+
+test("verify: a failing second capture keeps the first, unmarked", async () => {
+  const db = openDb(":memory:");
+  let calls = 0;
+  await snapshotPipeline({
+    config: verifyCfg(true), db, createdAt: "t",
+    discover: async () => ["/"],
+    captureFn: async () => (++calls === 1 ? { ok: true, png: png(100) } : { ok: false, error: "timeout" }),
+  });
+  const [row] = readBaselineImages(db);
+  expect(row!.status).toBe("ok");
+  expect(row!.unstableRegions).toBeUndefined();
+});
+
+test("verify uses the diff pool when one is given", async () => {
+  const db = openDb(":memory:");
+  const seen: number[] = [];
+  await snapshotPipeline({
+    config: verifyCfg(true), db, createdAt: "t",
+    discover: async () => ["/"],
+    captureFn: async () => ({ ok: true, png: png(100) }),
+    diffPool: {
+      submit: async (a, _b, opts) => {
+        seen.push(opts.threshold);
+        return { id: 1, ok: true, width: 4, height: 4, diffPixels: 3, diffScore: 0.2, diffPng: a,
+          regions: [{ x: 1, y: 1, width: 2, height: 2 }], regionCount: 1 };
+      },
+      close: async () => {},
+    },
+  });
+  expect(seen).toEqual([0.1]);
+  expect(readBaselineImages(db)[0]!.unstableRegions).toEqual([{ x: 1, y: 1, width: 2, height: 2 }]);
+});

@@ -11,6 +11,7 @@ import { snapshotPipeline } from "../pipeline/snapshot";
 import type { ResolvedConfig } from "../config/schema";
 import { scenariosSource } from "../targets/scenarios";
 import { makeProgress } from "../progress";
+import { DiffPool } from "../diff/pool";
 
 export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   const configPath = parsed.configPath ?? `${process.cwd()}/momus.config.ts`;
@@ -51,6 +52,8 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<num
   const realFetch = makeFetcher(config.insecure, config.requestHeaders);
 
   const seams = captureSeams(browser, config);
+  // Only verify diffs during a snapshot; don't spawn workers otherwise.
+  const diffPool = config.stabilize.verify ? new DiffPool(config.concurrency.diffWorkers) : undefined;
 
   try {
     await snapshotPipeline({
@@ -69,11 +72,13 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<num
       setup: seams.setupProd,
       captureFn: seams.captureProd,
       progress,
+      diffPool,
     });
   } catch (err) {
     console.error(`Snapshot failed: ${err instanceof Error ? err.message : err}`);
     return 2;
   } finally {
+    await diffPool?.close().catch(() => {});
     await browser.close().catch(() => {});
   }
 

@@ -1,7 +1,9 @@
 // src/pipeline/snapshot.ts
 import type { Database } from "bun:sqlite";
 import type { ResolvedConfig } from "../config/schema";
-import type { CaptureResult } from "../types";
+import type { CaptureResult, Region } from "../types";
+import type { DiffPoolLike } from "./run";
+import { diffPngs } from "../diff/diff";
 import type { Progress } from "../progress";
 import { clearBaseline, saveBaselineImage, writeSnapshot } from "../store/db";
 import { mapWithConcurrency } from "./queue";
@@ -22,6 +24,26 @@ export interface SnapshotPipelineArgs {
   /** Log in to prod (RFC-0004). After listing, so a discovery failure costs no
    * login; before the transaction, so a failure leaves the old baseline as is. */
   setup?: () => Promise<void>;
+  /** Diffs `stabilize.verify`'s two captures. Absent = inline on this thread,
+   * which is fine for tests and small baselines. */
+  diffPool?: DiffPoolLike;
+}
+
+/** `stabilize.verify`: capture the target again and diff the two. Any changed
+ * pixel at `diff.threshold` makes the image unstable, and returns where. A
+ * second capture that fails proves nothing either way: the first is kept as
+ * is (ADR-0034). */
+async function verifyCapture(
+  args: SnapshotPipelineArgs, first: Uint8Array, url: string, viewport: number, recipe?: Recipe,
+): Promise<Region[] | undefined> {
+  const again = await args.captureFn(url, viewport, args.config, recipe);
+  if (!again.ok) return undefined;
+  const opts = { threshold: args.config.diff.threshold, includeAA: args.config.diff.includeAA };
+  const diff = args.diffPool
+    ? await args.diffPool.submit(first, again.png!, opts)
+    : { ok: true, ...diffPngs(first, again.png!, opts) };
+  if (!diff.ok || !diff.diffPixels) return undefined;
+  return diff.regions ?? [];
 }
 
 /** Every prod capture failed, so there is nothing worth freezing. Thrown after
@@ -74,12 +96,16 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
         // capture() never throws; on failure it returns { ok:false, error }.
         const res = await args.captureFn(target.url.prod, viewport, config, target.recipe);
         if (!res.ok) { failed++; firstError ||= res.error ?? "unknown error"; }
+        const unstableRegions = res.ok && config.stabilize.verify
+          ? await verifyCapture(args, res.png!, target.url.prod, viewport, target.recipe)
+          : undefined;
         saveBaselineImage(db, {
           targetId: target.id, source: target.source, label: target.label, path: target.path,
           viewport, prodUrl: target.url.prod, recipeJson: canonicalJson(target.recipe),
           image: res.ok ? res.png : undefined,
           status: res.ok ? "ok" : "error",
           error: res.ok ? undefined : res.error,
+          unstableRegions,
         });
       } catch (error) {
         thrown ??= { error };

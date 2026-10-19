@@ -76,6 +76,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
       captureFn: args.captureProd,
       setup: args.setupProd,
       progress: args.progress,
+      diffPool: args.diffPool,
     });
     snapshot = readSnapshot(db)!;
     materialized = true;
@@ -119,7 +120,7 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
       const im = byKey.get(`${job.targetId ?? job.path} ${job.viewport}`);
       if (!im) return { ok: false, error: "no baseline image for this target" };
       return im.status === "ok" && im.image
-        ? { ok: true, png: im.image }
+        ? { ok: true, png: im.image, unstableRegions: im.unstableRegions }
         : { ok: false, error: im.error ?? "prod capture failed in snapshot" };
     },
     diffPool: args.diffPool,

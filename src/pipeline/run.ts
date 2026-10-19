@@ -165,6 +165,11 @@ export async function runPipeline(args: RunPipelineArgs): Promise<number> {
           out = await compareOnce(args, rec, dev, prod, failScore);
         }
         out.retries = retries;
+        // Shown for review, never counted: the baseline itself moved (ADR-0034).
+        if (out.status === "ok" && prod.unstableRegions) {
+          out.status = "unstable";
+          out.unstableRegions = prod.unstableRegions;
+        }
         saveComparison(db, runId, out);
       } catch (err) {
         rec.status = "error";
