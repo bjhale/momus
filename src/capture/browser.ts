@@ -8,6 +8,9 @@ import { existsSync } from "node:fs";
 
 export type BrowserEngine = "chromium" | "firefox" | "webkit";
 
+/** Which environment captured a baseline (RFC-0006, ADR-0033). */
+export type Rendering = "pinned" | "host";
+
 /** Exported so tests can spy on a specific engine's launch/executablePath. */
 export const ENGINES: Record<BrowserEngine, BrowserType> = { chromium, firefox, webkit };
 

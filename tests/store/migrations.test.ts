@@ -138,3 +138,14 @@ test("v4: snapshot gains setup_json; a v3 snapshot row migrates with NULL", () =
   expect(userVersion(db)).toBe(LATEST_VERSION);
   expect(db.query("SELECT created_at, setup_json FROM snapshot").get()).toEqual({ created_at: "t", setup_json: null });
 });
+
+test("v5 adds RFC-0006's columns", () => {
+  const db = openDb(":memory:");
+  const cols = (t: string) => (db.query(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).map((c) => c.name);
+  expect(cols("snapshot")).toContain("rendering");
+  expect(cols("baseline_images")).toContain("unstable_regions_json");
+  for (const c of ["dev_width", "dev_height", "prod_width", "prod_height", "region_count", "regions_json", "unstable_regions_json", "retries"]) {
+    expect(cols("comparisons")).toContain(c);
+  }
+  expect(LATEST_VERSION).toBe(5);
+});

@@ -223,11 +223,25 @@ function v4(db: Database): void {
   db.exec("ALTER TABLE snapshot ADD COLUMN setup_json TEXT;");
 }
 
+// --- v5: capture determinism and diff quality (RFC-0006). Columns only.
+// NULL rendering reads as "host": nothing was pinned before (ADR-0033).
+// The comparison columns are NULL on older rows, which render as before.
+function v5(db: Database): void {
+  db.exec("ALTER TABLE snapshot ADD COLUMN rendering TEXT;");
+  db.exec("ALTER TABLE baseline_images ADD COLUMN unstable_regions_json TEXT;");
+  for (const col of ["dev_width", "dev_height", "prod_width", "prod_height", "region_count", "retries"]) {
+    db.exec(`ALTER TABLE comparisons ADD COLUMN ${col} INTEGER;`);
+  }
+  db.exec("ALTER TABLE comparisons ADD COLUMN regions_json TEXT;");
+  db.exec("ALTER TABLE comparisons ADD COLUMN unstable_regions_json TEXT;");
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: v1 },
   { version: 2, up: v2, vacuum: true },
   { version: 3, up: v3, vacuum: true },
   { version: 4, up: v4 },
+  { version: 5, up: v5 },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

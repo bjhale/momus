@@ -29,11 +29,15 @@ function copy(): string {
   return file;
 }
 
-// The config the fixture was captured with (see make-v0.9.4.ts).
-const config = ConfigSchema.parse({
+// The config the fixture was captured with (see make-v0.9.4.ts). v0.9.4
+// predates RFC-0006, so its capture is spelled out: no reduced motion, no
+// image wait. Today's defaults differ, and the gate refuses them (ADR-0032).
+const raw = {
   dev: "http://localhost:47802", prod: "http://localhost:47801", viewports: [375],
-  stabilize: { waitUntil: "load", settleMs: 0 },
   discovery: { urlList: "urls.txt", sitemap: false },
+};
+const config = ConfigSchema.parse({
+  ...raw, stabilize: { waitUntil: "load", settleMs: 0, reducedMotion: "no-preference", waitForImages: false },
 });
 
 test("the v0.9.4 fixture migrates to the latest version", () => {
@@ -85,4 +89,21 @@ test("the migrated v0.9.4 run renders as a report", async () => {
   const html = await Bun.file(out).text();
   expect(html).toContain("run #1");
   expect(html).toContain(">/about<");
+});
+
+test("the v0.9.4 baseline is refused by a default config, and the message says to re-capture", async () => {
+  const db = openDb(copy());
+  const res = await runFlow({
+    config: ConfigSchema.parse({ ...raw, stabilize: { waitUntil: "load", settleMs: 0 } }), db, now: "2026-10-18T00:00:00Z",
+    discover: async () => { throw new Error("must not rediscover"); },
+    readUrlList: async () => "/\n/about\n",
+    captureProd: async () => { throw new Error("must not recapture prod"); },
+    getDev: async () => { throw new Error("must not capture dev"); },
+    diffPool: { submit: async () => { throw new Error("must not diff"); }, close: async () => {} },
+  });
+  expect(res.ok).toBe(false);
+  if (!res.ok) {
+    expect(res.conflict).toContain("predates this setting");
+    expect(res.conflict).toContain("momus snapshot");
+  }
 });

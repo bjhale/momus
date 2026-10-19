@@ -111,3 +111,67 @@ test("a baseline from before setup existed (no setupJson) matches a config witho
   const { setupJson: _omit, ...old } = snapFrom(c);
   expect(baselineConflict(c, old)).toBeNull();
 });
+
+/** A baseline captured before RFC-0006: its stabilize has none of the new keys. */
+function preRfc(c: ReturnType<typeof cfg>): SnapshotMeta {
+  const { waitForImages, clock, reducedMotion, colorScheme, verify, ...old } = c.stabilize;
+  return { ...snapFrom(c), stabilize: old };
+}
+
+test("a default config refuses a pre-RFC-0006 baseline, saying how to re-capture", () => {
+  const c = cfg();
+  const msg = baselineConflict(c, preRfc(c))!;
+  expect(msg).toContain("stabilize.");
+  expect(msg).toContain("predates this setting");
+  expect(msg).toContain("momus snapshot");
+});
+
+test("stabilize.reducedMotion: an old baseline reads as no-preference", () => {
+  const c = cfg({ stabilize: { waitForImages: false } });
+  const msg = baselineConflict(c, preRfc(c))!;
+  expect(msg).toContain("stabilize.reducedMotion");
+  expect(msg).toContain('"no-preference"');
+  expect(msg).toContain("momus snapshot");
+  const same = cfg({ stabilize: { waitForImages: false, reducedMotion: "no-preference" } });
+  expect(baselineConflict(same, preRfc(same))).toBeNull();
+});
+
+test("stabilize.waitForImages: an old baseline reads as false", () => {
+  const c = cfg({ stabilize: { reducedMotion: "no-preference" } });
+  const msg = baselineConflict(c, preRfc(c))!;
+  expect(msg).toContain("stabilize.waitForImages");
+  expect(msg).toContain("false");
+});
+
+test("stabilize.colorScheme: an old baseline reads as light; a change conflicts", () => {
+  const c = cfg({ stabilize: { reducedMotion: "no-preference", waitForImages: false } });
+  expect(baselineConflict(c, preRfc(c))).toBeNull();
+  const dark = cfg({ stabilize: { reducedMotion: "no-preference", waitForImages: false, colorScheme: "dark" } });
+  const msg = baselineConflict(dark, preRfc(c))!;
+  expect(msg).toContain("stabilize.colorScheme");
+  expect(msg).toContain('"dark"');
+});
+
+test("stabilize.clock: an old baseline reads as unset; a changed clock conflicts", () => {
+  const old = cfg({ stabilize: { reducedMotion: "no-preference", waitForImages: false } });
+  const c = cfg({ stabilize: { reducedMotion: "no-preference", waitForImages: false, clock: "2026-01-01T00:00:00Z" } });
+  expect(baselineConflict(c, preRfc(old))!).toContain("stabilize.clock");
+  const later = cfg({ stabilize: { clock: "2027-01-01T00:00:00Z" } });
+  expect(baselineConflict(later, snapFrom(cfg({ stabilize: { clock: "2026-01-01T00:00:00Z" } })))!).toContain("stabilize.clock");
+});
+
+test("verify and retries don't change pixels, so they're not gated", () => {
+  const c = cfg({ stabilize: { verify: true }, retries: 3 });
+  expect(baselineConflict(c, snapFrom(cfg()))).toBeNull();
+});
+
+test("rendering: pinned vs host conflicts both ways; an old baseline reads as host", () => {
+  const c = cfg();
+  const msg = baselineConflict(c, { ...snapFrom(c), rendering: "host" }, "pinned")!;
+  expect(msg).toContain("rendering");
+  expect(msg).toContain('"pinned"');
+  expect(msg).toContain('"host"');
+  expect(baselineConflict(c, { ...snapFrom(c), rendering: "pinned" }, "host")).not.toBeNull();
+  expect(baselineConflict(c, snapFrom(c), "host")).toBeNull();
+  expect(baselineConflict(c, { ...snapFrom(c), rendering: "pinned" }, "pinned")).toBeNull();
+});

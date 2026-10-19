@@ -2,13 +2,29 @@
 import type { ResolvedConfig } from "../config/schema";
 import { setupIdentity } from "../config/redact";
 import type { SnapshotMeta } from "../store/db";
+import type { StabilizeOptions } from "../capture/screenshot";
+import type { Rendering } from "../capture/browser";
+
+/** RFC-0006's capture settings, each with what a baseline that predates it was
+ * captured with. Two of those aren't today's defaults, so a default config
+ * refuses such a baseline with a hint rather than diff it against a different
+ * capture (ADR-0032). `clock` reads as unset either way: JSON drops undefined,
+ * so an old baseline and one captured without a clock look the same. */
+const RFC_0006_STABILIZE: ReadonlyArray<readonly [keyof StabilizeOptions, unknown]> = [
+  ["waitForImages", false],
+  ["clock", null],
+  ["reducedMotion", "no-preference"],
+  ["colorScheme", "light"],
+];
+
+const shown = (v: unknown) => (v === null ? "unset" : JSON.stringify(v));
 
 /** A prod baseline is only diff-able against dev when it was captured from the
  * same prod origin, and dev is captured with the same viewports and stabilize
  * settings. Returns a reason string on mismatch,
  * or null when the live config is compatible with the baseline. Compared
  * field-by-field so SQLite/JSON key ordering can never cause a false mismatch. */
-export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta): string | null {
+export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta, rendering: Rendering = "host"): string | null {
   // A baseline from another site makes every diff meaningless while looking
   // clean. This also covers `run --prod`, which overrides config.prod
   // (ADR-0026). Origins, not full URLs: a trailing slash isn't another site.
@@ -21,6 +37,15 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta)
 
   if (config.browser !== (snapshot.browser ?? "chromium")) {
     return `browser differs: config "${config.browser}" vs baseline "${snapshot.browser ?? "chromium"}"`;
+  }
+
+  // One value for the environment, not its flags: tuning the pinned flags is
+  // a momus change, not a reason to refuse every baseline (ADR-0033).
+  const baseRendering = snapshot.rendering ?? "host";
+  if (rendering !== baseRendering) {
+    return `rendering differs: this run is "${rendering}" vs baseline "${baseRendering}". ` +
+      "A baseline from the Docker image (pinned) only diffs against captures made in it, and the reverse. " +
+      "Run where the baseline was captured, or re-capture it with `momus run --snapshot` (or `momus snapshot`).";
   }
 
   const cv = config.viewports, sv = snapshot.viewports;
@@ -47,6 +72,16 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta)
   const cr = cs.remove ?? [], sr = ss.remove ?? [];
   if (cr.length !== sr.length || cr.some((m, i) => m !== sr[i])) {
     return `stabilize.remove differs: config ${JSON.stringify(cr)} vs baseline ${JSON.stringify(sr)}`;
+  }
+
+  for (const [key, before] of RFC_0006_STABILIZE) {
+    const live = cs[key] ?? null;
+    const stored = ss[key] ?? before;
+    if (live !== stored) {
+      const predates = ss[key] === undefined && before !== null;
+      return `stabilize.${key} differs: config ${shown(live)} vs baseline ${shown(stored)}` +
+        (predates ? " (the baseline predates this setting; re-capture it with `momus run --snapshot` or `momus snapshot`)" : "");
+    }
   }
 
   // Only prod's setup shaped the baseline, so dev's may change freely. Fill

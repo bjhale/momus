@@ -137,9 +137,20 @@ export const ConfigSchema = z.object({
     disableAnimations: z.boolean().default(true),
     mask: z.array(z.string()).default([]),
     remove: z.array(z.string()).default([]),
+    // RFC-0006. Each changes pixels, so each is gated (ADR-0032).
+    waitForImages: z.boolean().default(true),
+    clock: z.string().refine((s) => !Number.isNaN(Date.parse(s)), {
+      message: "stabilize.clock must be an ISO date, e.g. 2026-01-01T00:00:00Z",
+    }).optional(),
+    reducedMotion: z.enum(["reduce", "no-preference"]).default("reduce"),
+    colorScheme: z.enum(["light", "dark", "no-preference"]).default("light"),
+    // Opt-in: it doubles the cost of every baseline capture (RFC-0006).
+    verify: z.boolean().default(false),
   }).default({}),
   diff: z.object({
     threshold: z.number().min(0).max(1).default(0.1),
+    // false = pixelmatch's anti-aliasing detection is on: AA pixels don't count.
+    includeAA: z.boolean().default(false),
     failScore: z.number().min(0).max(1).default(0.01),
     overrides: z.array(z.object({
       path: z.string(),
@@ -149,6 +160,8 @@ export const ConfigSchema = z.object({
     allowAdded: z.boolean().default(false),
     allowRemoved: z.boolean().default(false),
   }).default({}),
+  // Re-capture dev up to N times when a target fails the gate (ADR-0034).
+  retries: z.number().int().min(0).max(10).default(0),
   concurrency: z.object({
     screenshots: z.number().int().positive().default(6),
     diffWorkers: z.number().int().positive().default(4),

@@ -1,8 +1,8 @@
 // src/store/db.ts
 import { Database } from "bun:sqlite";
-import type { ComparisonRecord } from "../types";
+import type { ComparisonRecord, Region } from "../types";
 import type { StabilizeOptions } from "../capture/screenshot";
-import type { BrowserEngine } from "../capture/browser";
+import type { BrowserEngine, Rendering } from "../capture/browser";
 import type { TargetSourceName } from "../targets/target";
 import { assertNotTooNew, migrate } from "./migrations";
 
@@ -31,6 +31,8 @@ export interface StartRunArgs {
 }
 
 const boolOrNull = (b: boolean | undefined) => (b === undefined ? null : b ? 1 : 0);
+const regionsJson = (r: Region[] | undefined) => (r === undefined ? null : JSON.stringify(r));
+const parseRegions = (s: string | null): Region[] | undefined => (s === null ? undefined : JSON.parse(s));
 
 export function startRun(db: Database, a: StartRunArgs): number {
   const res = db.query(
@@ -103,14 +105,17 @@ export function saveComparison(db: Database, runId: number, r: ComparisonRecord)
   db.query(
     `INSERT OR REPLACE INTO comparisons
      (run_id, target_id, source, label, path, viewport, dev_url, prod_url, dev_image, prod_image, diff_image,
-      width, height, diff_pixels, diff_score, fail_score, passed, status, error)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      width, height, diff_pixels, diff_score, fail_score, passed, status, error,
+      dev_width, dev_height, prod_width, prod_height, regions_json, region_count, unstable_regions_json, retries)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     runId, r.targetId ?? r.path, r.source ?? "pages", r.label ?? r.path,
     r.path, r.viewport, r.devUrl, r.prodUrl,
     r.devImage ?? null, r.prodImage ?? null, r.diffImage ?? null,
     r.width ?? null, r.height ?? null, r.diffPixels ?? null, r.diffScore ?? null, r.failScore ?? null,
     r.passed === undefined ? null : (r.passed ? 1 : 0), r.status, r.error ?? null,
+    r.devWidth ?? null, r.devHeight ?? null, r.prodWidth ?? null, r.prodHeight ?? null,
+    regionsJson(r.regions), r.regionCount ?? null, regionsJson(r.unstableRegions), r.retries ?? null,
   );
 }
 
@@ -136,6 +141,10 @@ export function readComparisons(db: Database, runId: number): ComparisonRow[] {
     diffPixels: x.diff_pixels ?? undefined, diffScore: x.diff_score ?? undefined, failScore: x.fail_score ?? undefined,
     passed: x.passed === null ? undefined : x.passed === 1,
     status: x.status, error: x.error ?? undefined,
+    devWidth: x.dev_width ?? undefined, devHeight: x.dev_height ?? undefined,
+    prodWidth: x.prod_width ?? undefined, prodHeight: x.prod_height ?? undefined,
+    regions: parseRegions(x.regions_json), regionCount: x.region_count ?? undefined,
+    unstableRegions: parseRegions(x.unstable_regions_json), retries: x.retries ?? undefined,
   }));
 }
 
@@ -151,14 +160,17 @@ export interface SnapshotMeta {
   browser?: BrowserEngine;
   /** Redacted canonical JSON of prod's setup; null = no setup. */
   setupJson?: string | null;
+  /** Absent reads as "host": nothing was pinned before RFC-0006. */
+  rendering?: Rendering;
 }
 
 export function writeSnapshot(db: Database, m: SnapshotMeta): number {
   db.exec("DELETE FROM snapshot;");
   const res = db.query(
-    `INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser, setup_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson, m.browser ?? "chromium", m.setupJson ?? null);
+    `INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser, setup_json, rendering)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson,
+    m.browser ?? "chromium", m.setupJson ?? null, m.rendering ?? "host");
   return Number(res.lastInsertRowid);
 }
 
@@ -174,6 +186,7 @@ export function readSnapshot(db: Database): SnapshotMeta | null {
     configJson: row.config_json,
     browser: (row.browser ?? "chromium") as BrowserEngine,
     setupJson: row.setup_json ?? null,
+    rendering: (row.rendering ?? "host") as Rendering,
   };
 }
 
@@ -189,6 +202,8 @@ export interface BaselineImageRow {
   image?: Uint8Array;
   status: "ok" | "error";
   error?: string;
+  /** Set when `stabilize.verify` saw this image change between two captures. */
+  unstableRegions?: Region[];
 }
 
 type Identity = "targetId" | "source" | "label" | "recipeJson";
@@ -199,11 +214,11 @@ export type BaselineImageInput = Omit<BaselineImageRow, Identity> & Partial<Pick
 export function saveBaselineImage(db: Database, r: BaselineImageInput): void {
   db.query(
     `INSERT OR REPLACE INTO baseline_images
-     (target_id, source, label, path, viewport, prod_url, recipe_json, image, status, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (target_id, source, label, path, viewport, prod_url, recipe_json, image, status, error, unstable_regions_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     r.targetId ?? r.path, r.source ?? "pages", r.label ?? r.path, r.path, r.viewport, r.prodUrl,
-    r.recipeJson ?? null, r.image ?? null, r.status, r.error ?? null,
+    r.recipeJson ?? null, r.image ?? null, r.status, r.error ?? null, regionsJson(r.unstableRegions),
   );
 }
 
@@ -220,6 +235,7 @@ export function readBaselineImages(db: Database): BaselineImageRow[] {
     image: x.image ? new Uint8Array(x.image) : undefined,
     status: x.status,
     error: x.error ?? undefined,
+    unstableRegions: parseRegions(x.unstable_regions_json ?? null),
   }));
 }
 

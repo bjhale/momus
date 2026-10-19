@@ -302,3 +302,46 @@ test("snapshot setupJson round-trips; absent reads as null", () => {
   writeSnapshot(db, m);
   expect(readSnapshot(db)!.setupJson).toBeNull();
 });
+
+test("RFC-0006 comparison fields round-trip; absent ones read as undefined", () => {
+  const db = openDb(":memory:");
+  const id = startRun(db, RUN);
+  const full: ComparisonRecord = {
+    path: "/", viewport: 1, devUrl: "d", prodUrl: "p", status: "unstable", diffScore: 0.1, passed: false,
+    devWidth: 100, devHeight: 140, prodWidth: 90, prodHeight: 100,
+    regions: [{ x: 1, y: 2, width: 3, height: 4 }], regionCount: 7,
+    unstableRegions: [{ x: 5, y: 6, width: 7, height: 8 }], retries: 2,
+  };
+  saveComparison(db, id, full);
+  saveComparison(db, id, { path: "/old", viewport: 1, devUrl: "d", prodUrl: "p", status: "ok" });
+  const rows = readComparisons(db, id);
+  const r = rows.find((x) => x.path === "/")!;
+  expect([r.devWidth, r.devHeight, r.prodWidth, r.prodHeight]).toEqual([100, 140, 90, 100]);
+  expect(r.regions).toEqual([{ x: 1, y: 2, width: 3, height: 4 }]);
+  expect(r.regionCount).toBe(7);
+  expect(r.unstableRegions).toEqual([{ x: 5, y: 6, width: 7, height: 8 }]);
+  expect(r.retries).toBe(2);
+  expect(r.status).toBe("unstable");
+  const o = rows.find((x) => x.path === "/old")!;
+  expect([o.devWidth, o.regions, o.regionCount, o.unstableRegions, o.retries]).toEqual([undefined, undefined, undefined, undefined, undefined]);
+});
+
+test("baseline unstableRegions round-trip; absent reads as undefined", () => {
+  const db = openDb(":memory:");
+  saveBaselineImage(db, { path: "/", viewport: 1, prodUrl: "p", status: "ok", image: new Uint8Array([1]), unstableRegions: [{ x: 1, y: 2, width: 3, height: 4 }] });
+  saveBaselineImage(db, { path: "/b", viewport: 1, prodUrl: "p", status: "ok", image: new Uint8Array([1]) });
+  const [a, b] = readBaselineImages(db);
+  expect(a!.unstableRegions).toEqual([{ x: 1, y: 2, width: 3, height: 4 }]);
+  expect(b!.unstableRegions).toBeUndefined();
+});
+
+test("snapshot rendering round-trips; absent reads as host", () => {
+  const db = openDb(":memory:");
+  const m = { createdAt: "t", prodBaseUrl: "https://p", viewports: [1280], stabilize: STAB, configJson: "{}" };
+  writeSnapshot(db, { ...m, rendering: "pinned" });
+  expect(readSnapshot(db)!.rendering).toBe("pinned");
+  writeSnapshot(db, m);
+  expect(readSnapshot(db)!.rendering).toBe("host");
+  db.exec("UPDATE snapshot SET rendering = NULL");
+  expect(readSnapshot(db)!.rendering).toBe("host");
+});

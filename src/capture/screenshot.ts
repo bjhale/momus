@@ -14,6 +14,15 @@ export interface StabilizeOptions {
   disableAnimations: boolean;
   mask: string[];
   remove: string[];
+  // RFC-0006. Optional because a baseline from before it has none of them;
+  // the gate reads each absence as the behavior that baseline was captured with.
+  waitForImages?: boolean;
+  /** ISO date that `Date` is pinned to; unset = the real clock. */
+  clock?: string;
+  reducedMotion?: "reduce" | "no-preference";
+  colorScheme?: "light" | "dark" | "no-preference";
+  /** Capture each baseline image twice (snapshot only). Not a capture setting. */
+  verify?: boolean;
 }
 
 /** Remove every element matching `selectors` from the DOM before capture, so

@@ -230,3 +230,29 @@ test("a scenario's viewports must be among the top-level viewports", () => {
   expect(ConfigSchema.parse({ ...rfc4Base, viewports: [375, 1280], scenarios: [{ id: "nav", path: "/", viewports: [375] }] })
     .scenarios[0]!.viewports).toEqual([375]);
 });
+
+test("RFC-0006 settings default to the spec's values", () => {
+  const c = ConfigSchema.parse({ dev: "https://dev.example.com", prod: "https://www.example.com" });
+  expect(c.stabilize.waitForImages).toBe(true);
+  expect(c.stabilize.reducedMotion).toBe("reduce");
+  expect(c.stabilize.colorScheme).toBe("light");
+  expect(c.stabilize.verify).toBe(false);
+  expect(c.stabilize.clock).toBeUndefined();
+  expect(c.retries).toBe(0);
+  expect(c.diff.includeAA).toBe(false);
+});
+
+test("stabilize.clock must be a parseable date", () => {
+  const base = { dev: "https://dev.example.com", prod: "https://www.example.com" };
+  expect(ConfigSchema.parse({ ...base, stabilize: { clock: "2026-01-01T00:00:00Z" } }).stabilize.clock).toBe("2026-01-01T00:00:00Z");
+  const r = ConfigSchema.safeParse({ ...base, stabilize: { clock: "yesterday" } });
+  expect(r.success).toBe(false);
+  expect(r.error!.issues[0]!.message).toBe("stabilize.clock must be an ISO date, e.g. 2026-01-01T00:00:00Z");
+});
+
+test("retries is an integer from 0 to 10", () => {
+  const base = { dev: "https://dev.example.com", prod: "https://www.example.com" };
+  expect(ConfigSchema.parse({ ...base, retries: 10 }).retries).toBe(10);
+  expect(ConfigSchema.safeParse({ ...base, retries: 11 }).success).toBe(false);
+  expect(ConfigSchema.safeParse({ ...base, retries: -1 }).success).toBe(false);
+});
