@@ -1,6 +1,6 @@
 # RFC-0006: Capture determinism and diff quality
 
-**Status:** Draft · **Milestone:** M5 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** M5 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -47,14 +47,21 @@ not to.
   by default; make `colorScheme` configurable.
 - **Pinned rendering:** fix the device scale factor, the font-smoothing flags,
   and disable GPU compositing in the Docker image. Document this as the
-  reference rendering environment.
+  reference rendering environment. Each snapshot records one value for which
+  environment captured it, `rendering: "pinned" | "host"`, and that value joins
+  the baseline compatibility gate. A pinned baseline is refused against a host
+  capture, and the reverse, with an error that names the mismatch. The
+  individual flags are not compared: they're an implementation detail of
+  `"pinned"`, so tuning them is a momus change, not a reason to invalidate
+  every baseline.
 
 ### Detecting instability
 
 - `stabilize.verify: true` captures each prod or baseline target twice. If the
   two captures differ, the target is marked **unstable**, a new status. It
   isn't reported as a regression, and the report shows which region changed so
-  it can be masked.
+  it can be masked. It is opt-in (default `false`): doubling the cost of every
+  snapshot is too much to impose on sites that are already stable.
 - `retries: N` re-captures a target that failed the gate, up to N times, and
   only fails it if every attempt fails. The retry count is recorded on the
   comparison, so flakiness stays visible instead of being swallowed.
@@ -87,11 +94,23 @@ waits are the exception: they can be unconditional only if they make no
 difference to an already-stable page, and that has to be shown, not assumed. The
 safer path is to gate them like everything else.
 
+`rendering` defaults to `"host"` for snapshots that predate it, which is
+accurate: nothing was pinned before this RFC. Those baselines stay diffable
+against host captures, and are refused against pinned ones until re-captured.
+Recording it is a schema change, so it ships as a new migration
+([ADR-0024](../adr/0024-versioned-schema-migrations.md)).
+
 ## Open questions
 
-- Should `verify` double the cost of every snapshot by default, or be opt-in?
-- Should the Docker image's rendering flags be part of the baseline identity, so
-  that a baseline from a bare-metal Chromium is refused?
+- ~~Should `verify` double the cost of every snapshot by default, or be
+  opt-in?~~ Resolved on 2026-10-18: opt-in, default `false`.
+- ~~Should the Docker image's rendering flags be part of the baseline identity,
+  so that a baseline from a bare-metal Chromium is refused?~~ Resolved on
+  2026-10-18: yes, as a single `rendering: "pinned" | "host"` value in the gate,
+  not the individual flags. See Pinned rendering and Compatibility.
+- Should the engine version join the gate too? Snapshots already record it but
+  the gate ignores it. Gating it would catch rendering drift across browser
+  upgrades, at the cost of refusing every baseline after a Playwright bump.
 
 ## Done when
 
@@ -101,5 +120,7 @@ safer path is to gate them like everything else.
 - [ ] Dimension changes and one-sided failures are annotated; both README known
       limitations are removed.
 - [ ] Change regions are stored and drawn.
+- [ ] Snapshots record `rendering`, and a pinned/host mismatch is refused by the
+      gate; pre-existing baselines read as `"host"`.
 - [ ] A flake benchmark: a fixture site with known nondeterminism runs N times,
       with zero false failures after stabilization.
