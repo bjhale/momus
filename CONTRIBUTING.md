@@ -113,6 +113,13 @@ git push origin v0.1.0   # triggers the release workflow
 
 The tag name becomes the release name and the image version.
 
+**Pre-releases.** A tag with a SemVer pre-release identifier — a hyphen after
+the version core, as in `v1.0.0-rc.1` or `v0.9.0-beta.2` — is published as a
+GitHub pre-release, and its image is pushed as `:1.0.0-rc.1` only; `:latest`
+stays on the newest stable release. The `package.json` version must carry the
+same identifier (`"version": "1.0.0-rc.1"`). Build metadata alone
+(`v1.0.0+build.7`) is not a pre-release.
+
 **Required repository secrets** (Settings → Secrets and variables → Actions) for
 the Docker publish:
 

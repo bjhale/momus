@@ -3,6 +3,8 @@ name: release
 # Cut a release by pushing a version tag, e.g.:
 #   git tag v0.1.0 && git push origin v0.1.0
 # The tag name becomes the release name, the GitHub release, and the image tag.
+# A tag with a SemVer pre-release identifier (v1.0.0-rc.1, v0.9.0-beta) is
+# published as a GitHub pre-release and never moves the image's :latest tag.
 on:
   push:
     tags:
@@ -19,6 +21,8 @@ jobs:
   # browser engine, so an image without working browsers fails to publish.
   check:
     runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.kind.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -32,6 +36,17 @@ jobs:
         run: test "v$(jq -r .version package.json)" = "$GITHUB_REF_NAME"
       - name: Type-check
         run: bunx tsc --noEmit
+      # SemVer puts the pre-release identifier after a hyphen that follows the
+      # version core. Matching the core, not just any hyphen, keeps a hyphen in
+      # build metadata (v1.0.0+build-7) from marking a stable release.
+      - name: Detect pre-release
+        id: kind
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+- ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # A notes-only GitHub release for the changelog. momus is distributed as the
   # Docker image (see the docker job) — Chromium and its dependencies are baked
@@ -44,11 +59,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
         run: |
           set -euo pipefail
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+            --generate-notes \
+            "${flags[@]}"
 
   # Build and push the multi-arch image in one shot: run on an arm64 runner and
   # let buildx build arm64 natively and amd64 under QEMU emulation.
@@ -78,9 +99,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          # {{version}} keeps the pre-release identifier (:1.0.0-rc.1). :latest
+          # is for stable releases only, so `docker pull momus` never lands on
+          # a release candidate.
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ needs.check.outputs.prerelease != 'true' }}
 
       - name: Build and push (arm64 native, amd64 emulated)
         uses: docker/build-push-action@v7
