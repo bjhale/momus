@@ -12,7 +12,7 @@
   },
   "scripts": {
     "test": "bun test --timeout 30000 && bun run test:isolated && bun run test:engines",
-    "test:isolated": "MOMUS_ISOLATED=determinism bun test --timeout 30000 tests/capture/determinism.integration.test.ts",
+    "test:isolated": "MOMUS_ISOLATED=determinism bun test --timeout 30000 tests/capture/determinism.integration.test.ts && MOMUS_ISOLATED=flake bun test --timeout 30000 tests/e2e/flake.integration.test.ts",
     "test:engines": "MOMUS_ENGINE=firefox bun test --timeout 30000 tests/capture/steps.integration.test.ts tests/e2e/scenarios.integration.test.ts && MOMUS_ENGINE=webkit bun test --timeout 30000 tests/capture/steps.integration.test.ts tests/e2e/scenarios.integration.test.ts",
     "momus": "bun run src/cli.ts",
     "build:dev": "docker build -t momus-dev ."
