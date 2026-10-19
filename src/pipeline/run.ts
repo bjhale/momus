@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
+import type { DiffOptions } from "../diff/diff";
 import type { Progress } from "../progress";
 import { redactConfig } from "../config/redact";
 import { canonicalJson, type Recipe, type TargetSourceName } from "../targets/target";
@@ -20,7 +21,7 @@ export function configHash(config: ResolvedConfig): string {
 }
 
 export interface DiffPoolLike {
-  submit(a: Uint8Array, b: Uint8Array, threshold: number): Promise<DiffResponse>;
+  submit(a: Uint8Array, b: Uint8Array, opts: DiffOptions): Promise<DiffResponse>;
   close(): Promise<void>;
 }
 
@@ -129,7 +130,8 @@ export async function runPipeline(args: RunPipelineArgs): Promise<number> {
         }
 
         rec.devImage = dev.png; rec.prodImage = prod.png;
-        const diff = await args.diffPool.submit(dev.png!, prod.png!, config.diff.threshold);
+        const diff = await args.diffPool.submit(dev.png!, prod.png!,
+          { threshold: config.diff.threshold, includeAA: config.diff.includeAA });
         if (!diff.ok) {
           rec.status = "error"; rec.error = `diff: ${diff.error}`;
           saveComparison(db, runId, rec);

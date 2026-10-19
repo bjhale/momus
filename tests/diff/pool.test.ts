@@ -20,7 +20,7 @@ function pngBuffer(w: number, h: number, v: number): Uint8Array {
 test("pool processes more jobs than workers", async () => {
   const pool = new DiffPool(2);
   const jobs = Array.from({ length: 5 }, (_, i) =>
-    pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, i * 10), 0.1));
+    pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, i * 10), { threshold: 0.1, includeAA: false }));
   const results = await Promise.all(jobs);
   expect(results.length).toBe(5);
   for (const r of results) expect(r.ok).toBe(true);
@@ -30,7 +30,7 @@ test("pool processes more jobs than workers", async () => {
 test("close resolves all pending jobs instead of hanging", async () => {
   const pool = new DiffPool(2);
   const jobs = Array.from({ length: 6 }, (_, i) =>
-    pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, i * 10), 0.1));
+    pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, i * 10), { threshold: 0.1, includeAA: false }));
   // Close immediately: some jobs are in-flight, some still queued.
   await pool.close();
   // Every submitted promise must settle (no hang). terminate() fires no events,
@@ -43,7 +43,7 @@ test("close resolves all pending jobs instead of hanging", async () => {
 test("submit after close resolves ok:false", async () => {
   const pool = new DiffPool(1);
   await pool.close();
-  const r = await pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, 0), 0.1);
+  const r = await pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, 0), { threshold: 0.1, includeAA: false });
   expect(r.ok).toBe(false);
 }, 5000);
 
@@ -52,11 +52,11 @@ test("falls back to inline diffing when workers cannot load, producing correct d
   const pool = new DiffPool(2, new URL("./does-not-exist.ts", import.meta.url).href);
   const inputs = Array.from({ length: 4 }, (_, i) =>
     [pngBuffer(8, 8, 255), pngBuffer(8, 8, i * 20)] as const);
-  const results = await Promise.all(inputs.map(([a, b]) => pool.submit(a, b, 0.1)));
+  const results = await Promise.all(inputs.map(([a, b]) => pool.submit(a, b, { threshold: 0.1, includeAA: false })));
   expect(results.length).toBe(4);
   for (let i = 0; i < inputs.length; i++) {
     const [a, b] = inputs[i]!;
-    const expected = diffPngs(a, b, 0.1);
+    const expected = diffPngs(a, b, { threshold: 0.1, includeAA: false });
     expect(results[i]!.ok).toBe(true);
     // Inline path must produce the exact same diff as calling diffPngs directly.
     expect(results[i]!.diffPixels).toBe(expected.diffPixels);
@@ -69,12 +69,23 @@ test("falls back to inline diffing when workers cannot load, producing correct d
 test("submit after inline fallback still returns a correct diff", async () => {
   const pool = new DiffPool(1, new URL("./does-not-exist.ts", import.meta.url).href);
   // First submit triggers the fallback.
-  await pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, 0), 0.1);
+  await pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 8, 0), { threshold: 0.1, includeAA: false });
   // Subsequent submit goes straight to inline and must still be correct.
   const a = pngBuffer(8, 8, 255), b = pngBuffer(8, 8, 128);
-  const r = await pool.submit(a, b, 0.1);
-  const expected = diffPngs(a, b, 0.1);
+  const r = await pool.submit(a, b, { threshold: 0.1, includeAA: false });
+  const expected = diffPngs(a, b, { threshold: 0.1, includeAA: false });
   expect(r.ok).toBe(true);
   expect(r.diffPixels).toBe(expected.diffPixels);
   await pool.close();
 }, 5000);
+
+test("submit returns per-side sizes and regions", async () => {
+  const pool = new DiffPool(1);
+  try {
+    const r = await pool.submit(pngBuffer(8, 8, 255), pngBuffer(8, 12, 255), { threshold: 0.1, includeAA: false });
+    expect(r.ok).toBe(true);
+    expect([r.aWidth, r.aHeight, r.bWidth, r.bHeight]).toEqual([8, 8, 8, 12]);
+    expect(r.regionCount).toBe(1);
+    expect(r.regions).toEqual([{ x: 0, y: 8, width: 8, height: 4 }]);
+  } finally { await pool.close(); }
+});

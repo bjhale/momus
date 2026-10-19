@@ -6,6 +6,7 @@ import { openDb, readComparisons, readRun } from "../../src/store/db";
 import { MOMUS_VERSION } from "../../src/version";
 import { ConfigSchema } from "../../src/config/schema";
 import type { DiffResponse } from "../../src/diff/worker";
+import type { DiffOptions } from "../../src/diff/diff";
 
 function png(w: number, h: number, v: number): Uint8Array {
   const p = new PNG({ width: w, height: h }); p.data.fill(v);
@@ -128,7 +129,7 @@ test("passes each side's url and the diff threshold through", async () => {
     getDev: async (job) => { devUrls.push(job.devUrl); return { ok: true, png: png(4, 4, 100) }; },
     getProd: async (job) => { prodUrls.push(job.prodUrl); return { ok: true, png: png(4, 4, 100) }; },
     diffPool: {
-      submit: async (a: Uint8Array, _b: Uint8Array, threshold: number) => { thresholds.push(threshold); return okDiff(a); },
+      submit: async (a: Uint8Array, _b: Uint8Array, opts: DiffOptions) => { thresholds.push(opts.threshold); return okDiff(a); },
       close: async () => {},
     },
   });

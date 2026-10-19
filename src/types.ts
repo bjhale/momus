@@ -23,6 +23,14 @@ export interface DiffResult {
   diffPixels: number;
   diffScore: number;   // diffPixels / (width*height), 0..1
   diffPng: Uint8Array;
+  /** Each side's own size before padding: a is the first image (dev). */
+  aWidth: number;
+  aHeight: number;
+  bWidth: number;
+  bHeight: number;
+  /** The largest change regions, and how many there were in all. */
+  regions: Region[];
+  regionCount: number;
 }
 
 /** `added`/`removed`: the target is in only one of the live list and the

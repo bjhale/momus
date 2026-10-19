@@ -1,9 +1,9 @@
 // src/diff/pool.ts
 import type { DiffResponse } from "./worker";
-import { diffPngs } from "./diff";
+import { diffPngs, type DiffOptions } from "./diff";
 
 interface Pending {
-  aPng: Uint8Array; bPng: Uint8Array; threshold: number;
+  aPng: Uint8Array; bPng: Uint8Array; opts: DiffOptions;
   resolve: (r: DiffResponse) => void;
 }
 
@@ -70,13 +70,13 @@ export class DiffPool {
     this.idle.push(w);
   }
 
-  submit(aPng: Uint8Array, bPng: Uint8Array, threshold: number): Promise<DiffResponse> {
+  submit(aPng: Uint8Array, bPng: Uint8Array, opts: DiffOptions): Promise<DiffResponse> {
     return new Promise((resolve) => {
       if (this.closed) {
         resolve({ id: -1, ok: false, error: "pool closed" });
         return;
       }
-      const job: Pending = { aPng, bPng, threshold, resolve };
+      const job: Pending = { aPng, bPng, opts, resolve };
       if (this.inline) {
         this.runInline(job);
         return;
@@ -91,11 +91,7 @@ export class DiffPool {
     // async so we never resolve synchronously inside submit()
     Promise.resolve().then(() => {
       try {
-        const r = diffPngs(job.aPng, job.bPng, job.threshold);
-        job.resolve({
-          id: -1, ok: true, width: r.width, height: r.height,
-          diffPixels: r.diffPixels, diffScore: r.diffScore, diffPng: r.diffPng,
-        });
+        job.resolve({ id: -1, ok: true, ...diffPngs(job.aPng, job.bPng, job.opts) });
       } catch (err) {
         job.resolve({ id: -1, ok: false, error: err instanceof Error ? err.message : String(err) });
       }
@@ -107,7 +103,7 @@ export class DiffPool {
       const w = this.idle.pop()!;
       const job = this.queue.shift()!;
       this.inFlight.set(w, job);
-      w.postMessage({ id: this.nextId++, aPng: job.aPng, bPng: job.bPng, threshold: job.threshold });
+      w.postMessage({ id: this.nextId++, aPng: job.aPng, bPng: job.bPng, opts: job.opts });
     }
   }
 
