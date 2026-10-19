@@ -43,3 +43,11 @@ test("isBrowserInstalled checks the requested engine's path", () => {
   expect(isBrowserInstalled("webkit")).toBe(false);
   spy.mockRestore();
 });
+
+test("newContext passes reducedMotion and colorScheme through", async () => {
+  let opts: any;
+  const fakeBrowser = { newContext: async (o: any) => { opts = o; return {} as any; } } as any;
+  await newContext(fakeBrowser, 1280, false, undefined, { reducedMotion: "reduce", colorScheme: "dark" });
+  expect(opts.reducedMotion).toBe("reduce");
+  expect(opts.colorScheme).toBe("dark");
+});

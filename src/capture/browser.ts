@@ -31,13 +31,22 @@ export async function launchBrowser(engine: BrowserEngine = "chromium"): Promise
 /** A logged-in session from setup (RFC-0004), held in memory only. */
 export type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
+/** Media features the page's CSS and `matchMedia` see (RFC-0006). */
+export interface MediaEmulation {
+  reducedMotion?: "reduce" | "no-preference";
+  colorScheme?: "light" | "dark" | "no-preference";
+}
+
 export async function newContext(
   browser: Browser, viewportWidth: number, ignoreHTTPSErrors = false, storageState?: StorageState,
+  media: MediaEmulation = {},
 ): Promise<BrowserContext> {
   return browser.newContext({
     viewport: { width: viewportWidth, height: 900 },
     deviceScaleFactor: 1,
     ignoreHTTPSErrors,
     storageState,
+    reducedMotion: media.reducedMotion,
+    colorScheme: media.colorScheme,
   });
 }

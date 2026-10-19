@@ -61,17 +61,17 @@ export async function removeSelectors(page: Page, selectors: string[]): Promise<
  * IntersectionObserver-based lazy loading only fires when elements enter the
  * viewport, and neither a static load nor a full-page screenshot scrolls — then
  * return to the top. Bounded by `maxMs` so infinite-scroll pages can't hang the
- * capture. `scroll-behavior` is forced to `auto` so a site's smooth-scroll CSS
- * doesn't turn each step into a slow animation. */
+ * capture: counted in ~100 ms steps, not by `Date.now()`, which
+ * `stabilize.clock` freezes. `scroll-behavior` is forced to `auto` so a site's
+ * smooth-scroll CSS doesn't turn each step into a slow animation. */
 export async function autoScroll(page: Page, maxMs: number): Promise<void> {
   await page.evaluate(async (budget) => {
     const doc = document.documentElement;
     const prevBehavior = doc.style.scrollBehavior;
     doc.style.scrollBehavior = "auto";
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const start = Date.now();
     let prevY = -1;
-    while (Date.now() - start < budget) {
+    for (let step = Math.ceil(budget / 100); step > 0; step--) {
       window.scrollBy(0, Math.floor(window.innerHeight * 0.8));
       await sleep(100);
       const y = window.scrollY;
@@ -100,6 +100,27 @@ export async function scopeRequestHeaders(page: Page, url: string, headers?: Rec
       route.continue();
     }
   });
+}
+
+/** Wait until every `<img>` has loaded (or failed) and decoded, bounded by
+ * `maxMs`. Needed after autoScroll: an image it triggered starts loading after
+ * the page already reached networkidle, and Playwright's load states are
+ * sticky, so waiting for networkidle again returns at once. */
+export async function waitForImages(page: Page, maxMs: number): Promise<void> {
+  if (maxMs <= 0) return;
+  await Promise.race([
+    page.evaluate(() => Promise.all(Array.from(document.images, async (img) => {
+      if (!img.complete) {
+        await new Promise((r) => {
+          img.addEventListener("load", r, { once: true });
+          img.addEventListener("error", r, { once: true });
+        });
+      }
+      // A broken image rejects decode(); it's as rendered as it will get.
+      await img.decode().catch(() => {});
+    }))),
+    page.waitForTimeout(maxMs),
+  ]);
 }
 
 export interface CaptureExtras {
@@ -136,9 +157,13 @@ export async function capture(
   // { ok:false } rather than throwing (upholds "one bad page can't abort a run").
   let context: BrowserContext | undefined;
   try {
-    context = await newContext(browser, viewportWidth, insecure, extras.storageState);
+    context = await newContext(browser, viewportWidth, insecure, extras.storageState,
+      { reducedMotion: opts.reducedMotion, colorScheme: opts.colorScheme });
     const page = await context.newPage();
     await scopeRequestHeaders(page, url, requestHeaders);
+    // Before navigation, so the page's first script already sees the pinned
+    // date. setFixedTime leaves timers running: settle waits still elapse.
+    if (opts.clock !== undefined) await page.clock.setFixedTime(new Date(opts.clock));
     // Hard navigation: a genuine load failure (DNS, connection refused, nav
     // timeout) throws here and is recorded as an error (spec §7).
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: opts.timeoutMs });
@@ -184,6 +209,7 @@ export async function capture(
         page.waitForTimeout(fontBudget),
       ]);
     }
+    if (opts.waitForImages) await waitForImages(page, deadline - Date.now());
 
     // Animations off before steps, so a transition a step triggers ends at
     // once; mask and remove after them, so steps can reach anything and
