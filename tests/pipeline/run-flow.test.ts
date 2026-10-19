@@ -394,7 +394,7 @@ test("runs accumulate across invocations and record the baseline they used", asy
   const run = readRun(db, r2.runId)!;
   expect(run.baselineId).toBe(snap.id);
   expect(JSON.parse(run.baselineJson!)).toEqual({
-    browser: "chromium", createdAt: "t1", id: snap.id, prodBaseUrl: "https://www.example.com",
+    browser: "chromium", createdAt: "t1", id: snap.id, prodBaseUrl: "https://www.example.com", rendering: "host",
     stabilize: snap.stabilize, viewports: [1280],
   });
   expect(run.engineVersion).toBe("131.0");
@@ -553,4 +553,33 @@ test("an unstable baseline image makes an unstable comparison, which doesn't fai
   expect(rows[0]!.unstableRegions).toEqual([{ x: 0, y: 0, width: 4, height: 4 }]);
   expect(rows[0]!.passed).toBe(false);
   expect(exitCodeFor(rows)).toBe(0);
+});
+
+test("materializing records the run's rendering on the snapshot", async () => {
+  const db = openDb(":memory:");
+  await runFlow({
+    config: cfg(), db, now: "t", rendering: "pinned",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true, png: png(100) }),
+    getDev: async () => ({ ok: true, png: png(100) }),
+    diffPool,
+  });
+  expect(readSnapshot(db)!.rendering).toBe("pinned");
+  const run = readRun(db, latestRunId(db)!)!;
+  expect(JSON.parse(run.baselineJson!).rendering).toBe("pinned");
+});
+
+test("a pinned baseline is refused by a host run", async () => {
+  const db = openDb(":memory:");
+  const args = {
+    config: cfg(), db, now: "t",
+    discover: async () => ["/"],
+    captureProd: async () => ({ ok: true as const, png: png(100) }),
+    getDev: async () => ({ ok: true as const, png: png(100) }),
+    diffPool,
+  };
+  await runFlow({ ...args, rendering: "pinned" });
+  const res = await runFlow({ ...args, rendering: "host" });
+  expect(res.ok).toBe(false);
+  if (!res.ok) expect(res.conflict).toContain("rendering");
 });

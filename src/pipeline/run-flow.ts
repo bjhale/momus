@@ -5,6 +5,7 @@ import type { CaptureResult } from "../types";
 import type { Progress } from "../progress";
 import { readSnapshot, readBaselineImages, pruneRuns, type BaselineImageRow, type SnapshotMeta, type CiMetadata } from "../store/db";
 import { snapshotPipeline } from "./snapshot";
+import type { Rendering } from "../capture/browser";
 import { baselineConflict } from "./compat";
 import { runPipeline, type Job, type DiffPoolLike } from "./run";
 import { pagesSource } from "../targets/pages";
@@ -41,6 +42,8 @@ export interface RunFlowArgs {
   forceSnapshot?: boolean;
   engineVersion?: string;
   ci?: CiMetadata;
+  /** Where this invocation captures (MOMUS_RENDERING). Default "host". */
+  rendering?: Rendering;
 }
 
 export type RunFlowResult =
@@ -52,7 +55,7 @@ export type RunFlowResult =
 export function baselineIdentityJson(s: SnapshotMeta): string {
   return canonicalJson({
     id: s.id, createdAt: s.createdAt, prodBaseUrl: s.prodBaseUrl,
-    browser: s.browser ?? "chromium", viewports: s.viewports, stabilize: s.stabilize,
+    browser: s.browser ?? "chromium", rendering: s.rendering ?? "host", viewports: s.viewports, stabilize: s.stabilize,
     ...(s.setupJson ? { setup: s.setupJson } : {}),
   })!;
 }
@@ -77,12 +80,13 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
       setup: args.setupProd,
       progress: args.progress,
       diffPool: args.diffPool,
+      rendering: args.rendering,
     });
     snapshot = readSnapshot(db)!;
     materialized = true;
   }
 
-  const conflict = baselineConflict(config, snapshot);
+  const conflict = baselineConflict(config, snapshot, args.rendering ?? "host");
   if (conflict) return { ok: false, conflict };
   // A materialized baseline is already committed if this throws; intended: the baseline is valid, there's just no run.
   await args.setupDev?.();

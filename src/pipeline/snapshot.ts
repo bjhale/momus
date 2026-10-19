@@ -4,6 +4,7 @@ import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, Region } from "../types";
 import type { DiffPoolLike } from "./run";
 import { diffPngs } from "../diff/diff";
+import type { Rendering } from "../capture/browser";
 import type { Progress } from "../progress";
 import { clearBaseline, saveBaselineImage, writeSnapshot } from "../store/db";
 import { mapWithConcurrency } from "./queue";
@@ -27,6 +28,8 @@ export interface SnapshotPipelineArgs {
   /** Diffs `stabilize.verify`'s two captures. Absent = inline on this thread,
    * which is fine for tests and small baselines. */
   diffPool?: DiffPoolLike;
+  /** The environment capturing it, recorded on the snapshot. Default "host". */
+  rendering?: Rendering;
 }
 
 /** `stabilize.verify`: capture the target again and diff the two. Any changed
@@ -125,6 +128,7 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
       configJson: JSON.stringify(redactConfig(config)),
       setupJson: setupIdentity(config),
       browser: config.browser,
+      rendering: args.rendering ?? "host",
     });
     db.exec("COMMIT;");
     committed = true;

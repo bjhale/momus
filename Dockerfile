@@ -37,6 +37,12 @@ RUN bun -e 'import { chromium, firefox, webkit } from "playwright"; for (const t
 COPY tsconfig.json ./
 COPY src ./src
 
+# This image is the reference rendering environment (RFC-0006, ADR-0033):
+# Chromium launches with its host-dependent rendering pinned, and baselines
+# captured here are marked "pinned", so the gate refuses to diff them against
+# captures made anywhere else, and the reverse.
+ENV MOMUS_RENDERING=pinned
+
 # Users mount their project here (config in, report/db out):
 #   docker run --rm -v "$PWD:/work" <image> run --config momus.config.ts
 WORKDIR /work

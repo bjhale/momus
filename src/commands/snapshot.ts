@@ -2,7 +2,7 @@
 import type { Database } from "bun:sqlite";
 import type { ParsedCli } from "../cli";
 import { loadConfigFile, resolveConfig } from "../config/load";
-import { isBrowserInstalled, launchBrowser } from "../capture/browser";
+import { isBrowserInstalled, launchBrowser, renderingMode, type Rendering } from "../capture/browser";
 import { captureSeams } from "./capture-seams";
 import { discoverPaths } from "../discovery/discover";
 import { makeFetcher } from "../discovery/fetcher";
@@ -16,9 +16,11 @@ import { DiffPool } from "../diff/pool";
 export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
   const configPath = parsed.configPath ?? `${process.cwd()}/momus.config.ts`;
   let config: ResolvedConfig;
+  let rendering: Rendering;
   try {
     const raw = await loadConfigFile(configPath);
     config = resolveConfig(raw, parsed.overrides);
+    rendering = renderingMode();
   } catch (err) {
     console.error(`Config error: ${err instanceof Error ? err.message : err}`);
     return 2;
@@ -39,14 +41,14 @@ export async function snapshotCommand(parsed: ParsedCli): Promise<number> {
     return 2;
   }
   try {
-    return await snapshotWithDb(config, db);
+    return await snapshotWithDb(config, db, rendering);
   } finally {
     db.close();
   }
 }
 
-async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<number> {
-  const browser = await launchBrowser(config.browser);
+async function snapshotWithDb(config: ResolvedConfig, db: Database, rendering: Rendering): Promise<number> {
+  const browser = await launchBrowser(config.browser, rendering);
   const progress = makeProgress();
 
   const realFetch = makeFetcher(config.insecure, config.requestHeaders);
@@ -73,6 +75,7 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database): Promise<num
       captureFn: seams.captureProd,
       progress,
       diffPool,
+      rendering,
     });
   } catch (err) {
     console.error(`Snapshot failed: ${err instanceof Error ? err.message : err}`);

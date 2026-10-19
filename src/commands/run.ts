@@ -2,7 +2,7 @@
 import type { Database } from "bun:sqlite";
 import type { ParsedCli } from "../cli";
 import { loadConfigFile, resolveConfig } from "../config/load";
-import { isBrowserInstalled, launchBrowser } from "../capture/browser";
+import { isBrowserInstalled, launchBrowser, renderingMode, type Rendering } from "../capture/browser";
 import { discoverPaths } from "../discovery/discover";
 import { makeFetcher } from "../discovery/fetcher";
 import { DiffPool } from "../diff/pool";
@@ -18,9 +18,11 @@ import { makeProgress } from "../progress";
 export async function runCommand(parsed: ParsedCli): Promise<number> {
   const configPath = parsed.configPath ?? `${process.cwd()}/momus.config.ts`;
   let config: ResolvedConfig;
+  let rendering: Rendering;
   try {
     const raw = await loadConfigFile(configPath);
     config = resolveConfig(raw, parsed.overrides);
+    rendering = renderingMode();
   } catch (err) {
     console.error(`Config error: ${err instanceof Error ? err.message : err}`);
     return 2;
@@ -43,14 +45,14 @@ export async function runCommand(parsed: ParsedCli): Promise<number> {
   // Everything after this point closes the handle exactly once, in the outer
   // finally, so no early return can leak it.
   try {
-    return await runWithDb(parsed, config, db);
+    return await runWithDb(parsed, config, db, rendering);
   } finally {
     db.close(); // also flushes WAL/SHM sidecars cleanly.
   }
 }
 
-async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database): Promise<number> {
-  const browser = await launchBrowser(config.browser);
+async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database, rendering: Rendering): Promise<number> {
+  const browser = await launchBrowser(config.browser, rendering);
   const diffPool = new DiffPool(config.concurrency.diffWorkers);
   const progress = makeProgress();
 
@@ -78,6 +80,7 @@ async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database
       progress,
       forceSnapshot: parsed.forceSnapshot,
       engineVersion: browser.version(),
+      rendering,
       ci: parsed.ci,
     });
   } catch (err) {
