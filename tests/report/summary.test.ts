@@ -68,3 +68,26 @@ test("worst shows the target label", () => {
     devUrl: "", prodUrl: "", status: "ok", passed: false, diffScore: 0.3 }]);
   expect(s.worst!.path).toBe("Menu open");
 });
+
+// --- RFC-0006 ---
+import { dimensionNote } from "../../src/report/summary";
+
+const sized = (dw: number, dh: number, pw: number, ph: number): ComparisonRecord =>
+  ({ ...ok("/", 1, 0, true), devWidth: dw, devHeight: dh, prodWidth: pw, prodHeight: ph });
+
+test("dimensionNote: height first, then width; null when equal or unknown", () => {
+  expect(dimensionNote(sized(100, 140, 100, 100))).toBe("dev is 40 px taller than prod");
+  expect(dimensionNote(sized(90, 100, 100, 120))).toBe("dev is 20 px shorter and 10 px narrower than prod");
+  expect(dimensionNote(sized(110, 100, 100, 100))).toBe("dev is 10 px wider than prod");
+  expect(dimensionNote(sized(100, 100, 100, 100))).toBeNull();
+  expect(dimensionNote(ok("/", 1, 0, true))).toBeNull();
+});
+
+test("unstable rows are counted apart and never fail the verdict", () => {
+  const s = summarize([ok("/a", 1, 0, true), { ...ok("/b", 1, 0.5, false), status: "unstable" }]);
+  expect(s.unstable).toBe(1);
+  expect(s.passed).toBe(1);
+  expect(s.failed).toBe(0);
+  expect(s.verdict).toBe("PASS");
+  expect(itemClass({ ...ok("/b", 1, 0.5, false), status: "unstable" })).toBe("unstable");
+});

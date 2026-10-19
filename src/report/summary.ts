@@ -9,6 +9,8 @@ export interface ReportSummary {
   errored: number;
   added: number;
   removed: number;
+  /** Shown for review, never in passed/failed or the verdict (ADR-0034). */
+  unstable: number;
   verdict: "PASS" | "FAIL";
   /** Highest-diffScore ok comparison; omitted when there are no ok comparisons.
    * `path` carries the target's label. */
@@ -17,15 +19,15 @@ export interface ReportSummary {
 }
 
 /** Per-item status class used by both styling and the filter. */
-export function itemClass(r: ComparisonRecord): "pass" | "fail" | "error" | "added" | "removed" {
-  if (r.status === "error" || r.status === "added" || r.status === "removed") {
+export function itemClass(r: ComparisonRecord): "pass" | "fail" | "error" | "added" | "removed" | "unstable" {
+  if (r.status === "error" || r.status === "added" || r.status === "removed" || r.status === "unstable") {
     return r.status;
   }
   return r.passed ? "pass" : "fail";
 }
 
 export function summarize(records: ComparisonRecord[], gate: GateOptions = STRICT_GATE): ReportSummary {
-  let passed = 0, failed = 0, errored = 0, added = 0, removed = 0;
+  let passed = 0, failed = 0, errored = 0, added = 0, removed = 0, unstable = 0;
   let worst: ReportSummary["worst"];
   let worstScore = -1;
 
@@ -33,6 +35,7 @@ export function summarize(records: ComparisonRecord[], gate: GateOptions = STRIC
     if (r.status === "error") { errored++; continue; }
     if (r.status === "added") { added++; continue; }
     if (r.status === "removed") { removed++; continue; }
+    if (r.status === "unstable") { unstable++; continue; }
     if (r.passed) passed++; else failed++;
     const score = r.diffScore ?? 0;
     if (score > worstScore) {
@@ -45,8 +48,19 @@ export function summarize(records: ComparisonRecord[], gate: GateOptions = STRIC
   const viewports = [...new Set(records.map((r) => r.viewport).filter((v) => v > 0))].sort((a, b) => a - b);
   return {
     total: records.length,
-    passed, failed, errored, added, removed,
+    passed, failed, errored, added, removed, unstable,
     verdict: records.some((r) => failsGate(r, gate)) ? "FAIL" : "PASS",
     worst, viewports,
   };
+}
+
+/** "dev is 40 px taller than prod", from each side's own size (RFC-0006).
+ * null when the sizes match, or aren't known (rows from before v5). */
+export function dimensionNote(r: ComparisonRecord): string | null {
+  const { devWidth: dw, devHeight: dh, prodWidth: pw, prodHeight: ph } = r;
+  if (dw === undefined || dh === undefined || pw === undefined || ph === undefined) return null;
+  const parts: string[] = [];
+  if (dh !== ph) parts.push(`${Math.abs(dh - ph)} px ${dh > ph ? "taller" : "shorter"}`);
+  if (dw !== pw) parts.push(`${Math.abs(dw - pw)} px ${dw > pw ? "wider" : "narrower"}`);
+  return parts.length ? `dev is ${parts.join(" and ")} than prod` : null;
 }
