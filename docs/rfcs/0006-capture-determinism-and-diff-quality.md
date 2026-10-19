@@ -1,6 +1,6 @@
 # RFC-0006: Capture determinism and diff quality
 
-**Status:** Accepted · **Milestone:** M5 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M5 · **Created:** 2026-10-16 · **ADRs:** [0032](../adr/0032-determinism-defaults-and-old-baselines.md), [0033](../adr/0033-rendering-environment-in-the-gate.md), [0034](../adr/0034-unstable-and-retries.md), [0035](../adr/0035-change-regions-and-the-pad-band.md)
 
 ## Summary
 
@@ -114,13 +114,13 @@ Recording it is a schema change, so it ships as a new migration
 
 ## Done when
 
-- [ ] Fonts and images are awaited; `clock`, `colorScheme` and reduced motion
+- [x] Fonts and images are awaited; `clock`, `colorScheme` and reduced motion
       are configurable and gated.
-- [ ] The `unstable` status and `retries` work, and are visible in the report.
-- [ ] Dimension changes and one-sided failures are annotated; both README known
+- [x] The `unstable` status and `retries` work, and are visible in the report.
+- [x] Dimension changes and one-sided failures are annotated; both README known
       limitations are removed.
-- [ ] Change regions are stored and drawn.
-- [ ] Snapshots record `rendering`, and a pinned/host mismatch is refused by the
+- [x] Change regions are stored and drawn.
+- [x] Snapshots record `rendering`, and a pinned/host mismatch is refused by the
       gate; pre-existing baselines read as `"host"`.
-- [ ] A flake benchmark: a fixture site with known nondeterminism runs N times,
+- [x] A flake benchmark: a fixture site with known nondeterminism runs N times,
       with zero false failures after stabilization.

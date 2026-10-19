@@ -43,6 +43,11 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0029](0029-scenarios-and-step-order.md) | Scenarios are declarative steps; animations off before steps, mask and remove after | 2026-10-17 |
 | [0030](0030-setup-per-side.md) | Setup runs once per side; prod logs in only for a baseline; only prod's redacted setup is gated | 2026-10-17 |
 | [0031](0031-per-engine-test-processes.md) | Each non-default browser engine's tests run in their own process | 2026-10-17 |
+| [0032](0032-determinism-defaults-and-old-baselines.md) | Determinism settings are gated; an older baseline reads as what it was captured with | 2026-10-18 |
+| [0033](0033-rendering-environment-in-the-gate.md) | The rendering environment is one gated value, set by the Docker image | 2026-10-18 |
+| [0034](0034-unstable-and-retries.md) | An unstable baseline image never fails the gate; `retries` re-captures dev only | 2026-10-18 |
+| [0035](0035-change-regions-and-the-pad-band.md) | Change regions are grid-clustered boxes; the pad band is magenta and counts as a region | 2026-10-18 |
+| [0036](0036-isolated-browser-test-files.md) | Browser test files that destabilize the shared process run isolated | 2026-10-18 |
 
 ## Open questions
 

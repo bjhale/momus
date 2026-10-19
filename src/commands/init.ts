@@ -30,7 +30,10 @@ export function configScaffold(): string {
     disableAnimations: true,
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],
     // remove: [".cookie-banner"],   // delete elements from the DOM before capture (space collapses)
+    // clock: "2026-01-01T00:00:00Z", // pin Date so relative times ("3 minutes ago") render the same
+    // verify: true,                  // capture each baseline image twice; mark ones that move unstable
   },
+  // retries: 2,   // re-capture dev before failing a target
 
   // Pages in another state. Steps: click, hover, fill, press, select, scroll, waitFor, wait, evaluate.
   // Don't put credentials in scenario steps; they are stored in the .sqlite as-is.

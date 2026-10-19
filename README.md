@@ -102,7 +102,8 @@ a stored **prod baseline**:
 - **Baseline present**: `momus run` reuses it and captures **dev only** — prod is
   **not** re-screenshotted (it is frozen) and prod's `setup` login doesn't run. The run **fails fast (exit 2)** if the
   live config's `browser`, `viewports`, `stabilize` or prod `setup` differ from the
-  baseline's.
+  baseline's, or if it runs in a different rendering environment (the Docker
+  image vs. anywhere else; see `stabilize` below).
 - **Different prod origin**: if `prod` (or `--prod`) has a different origin
   (scheme, host, port) than the baseline was captured from, the run fails with
   exit 2 and names both. Re-capture with `momus run --snapshot` (or
@@ -194,10 +195,17 @@ export default defineConfig({
     disableAnimations: true,    // freeze CSS animations/transitions
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],  // hide dynamic regions
     remove: [".cookie-banner"],                           // delete elements (space collapses)
+    waitForImages: true,        // wait for every <img> to load and decode
+    // clock: "2026-01-01T00:00:00Z",  // pin Date, so relative times render the same
+    reducedMotion: "reduce",    // emulate prefers-reduced-motion
+    colorScheme: "light",       // emulate prefers-color-scheme: "light" | "dark" | "no-preference"
+    verify: false,              // capture each baseline image twice; mark the ones that differ unstable
   },
+  retries: 0,                   // re-capture dev up to N times before failing a target (0-10)
 
   diff: {
     threshold: 0.1,   // per-pixel color sensitivity (pixelmatch)
+    includeAA: false, // count anti-aliased pixels as changes (false = AA detection on)
     failScore: 0.01,  // fraction of changed pixels that fails a page
     overrides: [{ path: "/blog/**", failScore: 0.05 }],  // per-path gates
     allowAdded: false,    // new-since-baseline targets fail unless true
@@ -247,6 +255,33 @@ Notes:
   collapses — for elements like cookie banners or chat widgets that shift layout.
   Use narrow selectors: an overly broad `remove` (e.g. `*` or `body`) deletes the
   whole page and yields a blank screenshot.
+- **Repeatable captures.** Before each screenshot momus waits for web fonts
+  and for every `<img>` to load and decode (`waitForImages`, bounded by
+  `timeoutMs`), and emulates `prefers-reduced-motion: reduce` and the configured
+  `colorScheme`. `clock` pins `Date` to a fixed instant so "posted 3 minutes
+  ago" renders the same every time; it is off by default because it can break
+  apps that poll. Each of these changes pixels, so each is part of the baseline
+  compatibility check. **A baseline captured by a momus older than these
+  settings is refused by a default config** (exit 2, naming the setting): it was
+  captured without reduced motion or the image wait. Re-capture it with
+  `momus run --snapshot` or `momus snapshot`, or set
+  `reducedMotion: "no-preference"` and `waitForImages: false` to keep diffing
+  against it.
+- **`verify`** captures every baseline image twice. If the two differ, the
+  target is **unstable**: its comparisons are shown in the report with the
+  changing regions outlined (dashed), but never fail the gate. Mask those regions
+  and re-capture. It doubles the cost of a snapshot, so it is off by default.
+- **`retries`** re-captures dev for a target that failed the gate (or whose dev
+  capture errored), up to N times, and fails it only if every attempt fails. The
+  report shows how many retries a target needed, so flakiness stays visible. A
+  prod error from the baseline is never retried: the baseline is frozen.
+- **Pinned rendering.** The Docker image is the reference rendering
+  environment: it sets `MOMUS_RENDERING=pinned`, which launches Chromium with
+  GPU compositing, font hinting, subpixel text positioning and LCD text off and
+  a fixed sRGB color profile. A baseline records whether it was captured
+  `pinned` or on the `host`, and a run in the other environment is refused
+  (exit 2). Outside the image, `MOMUS_RENDERING` is unset (`host`); any value
+  other than `pinned` or `host` is a config error.
 - **`insecure`** disables TLS certificate validation for both the discovery
   fetches and the browser page loads — for self-signed dev/staging servers. It
   removes MITM protection, so it defaults to `false` and should stay off against
@@ -425,9 +460,9 @@ header. That shows up as a diff. Use `mask` for it.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | All pages captured and passed the diff gate. |
+| `0` | All pages captured and passed the diff gate. **Unstable** targets (`verify`) don't count against it. |
 | `1` | At least one page failed the gate, errored, or is **added**/**removed** (unless allowed). A report is still written. |
-| `2` | Operational error that prevented the run: missing browser, bad config, a baseline conflict (different prod origin, browser, viewports, stabilize or prod setup), a DB written by a newer momus, every prod capture failing, a failed `setup` login, or another unrecoverable failure. |
+| `2` | Operational error that prevented the run: missing browser, bad config (including an unknown `MOMUS_RENDERING`), a baseline conflict (different prod origin, browser, viewports, stabilize, prod setup or rendering environment), a DB written by a newer momus, every prod capture failing, a failed `setup` login, or another unrecoverable failure. |
 
 ## How it works
 
@@ -444,7 +479,11 @@ header. That shows up as a diff. Use `mask` for it.
    (pass/fail verdict, counts, worst page, viewports) with an All/Passed/Failed
    filter, and each comparison as a collapsible accordion (page, width, change %,
    pass/fail) that expands to the `dev | prod | diff` screenshots — worst pages
-   first. Then exit with the code above.
+   first. Changed areas are clustered into regions ("3 regions") and outlined
+   on all three images. A page whose dev and prod sizes differ says so ("dev is
+   40 px taller than prod"), and the band only one side covers is drawn magenta
+   in the diff. A capture that failed on one side still shows the side that
+   rendered. Then exit with the code above.
 
 While capturing and diffing, momus renders a progress bar to **stderr** — one
 phase for prod capture (on a fresh baseline) and one for dev capture + diff. In a
@@ -463,16 +502,6 @@ piping stdout to a file stays clean.
   at runtime — awkward to ship as a lone executable. The image bundles momus
   (Bun + Playwright) and Chromium together, so there's nothing else to install,
   and diffs run in the full worker-thread pool (`concurrency.diffWorkers`).
-- **Dimension mismatches are detected but not yet annotated.** When a page's dev
-  and prod screenshots differ in height/width, the shorter image is padded with
-  an opaque sentinel color so the size change reliably shows up as a diff (and
-  raises the score). The report does not yet print an explicit "dimensions
-  differed" note, nor does it store the original per-side dimensions — a planned
-  enhancement.
-- **A one-sided load failure records the error but not the good side's image.**
-  If dev renders but prod 404s (or vice versa), the comparison is stored as an
-  error with the message; the successfully-captured side is not currently shown
-  on the error card.
 - **One baseline per DB.** `momus snapshot` stores a single prod baseline in
   `output.db`; a new snapshot replaces it. The last `output.keepRuns` runs are
   kept alongside it, and `momus report --run ID` re-renders any of them.

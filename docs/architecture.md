@@ -55,14 +55,26 @@ rather than near-simultaneously. That temporal skew is inherent to a frozen
 baseline; selector masking is the mitigation.
 
 Before diffing, a **compatibility gate** ([compat.ts](../src/pipeline/compat.ts))
-compares the live config's prod origin, `browser`, `viewports`, `stabilize`, and
-prod `setup` against the baseline's. Any mismatch is a hard error (exit 2) — a dev capture at
+compares the live config's prod origin, `browser`, `viewports`, `stabilize`,
+prod `setup`, and the rendering environment (`pinned` in the Docker image,
+`host` elsewhere; [ADR-0033](adr/0033-rendering-environment-in-the-gate.md))
+against the baseline's. Any mismatch is a hard error (exit 2) — a dev capture at
 1280px against a prod capture at 768px is ~100% "changed" and tells you nothing,
 and a baseline from another prod origin is another site
 ([ADR-0026](adr/0026-prod-origin-in-the-gate.md)). `--prod` overrides
 `config.prod`, so a mismatching `--prod` on `run` is caught the same way. Only
 prod's setup is compared, as redacted canonical JSON in `snapshot.setup_json`
 ([ADR-0030](adr/0030-setup-per-side.md)); scenario recipes are gated per target.
+A `stabilize` setting the baseline predates reads as the behavior it was
+captured with, which for `reducedMotion` and `waitForImages` isn't today's
+default, so such a baseline is refused until re-captured
+([ADR-0032](adr/0032-determinism-defaults-and-old-baselines.md)).
+
+`stabilize.verify` captures each baseline image twice; one that changed is
+stored with its `unstable_regions_json`, and every comparison against it is
+`unstable`: diffed and shown, never counted. `retries` re-captures dev for a
+compared target that fails the gate; prod is frozen, so a baseline error is
+never retried ([ADR-0034](adr/0034-unstable-and-retries.md)).
 
 ## Pipeline
 
@@ -134,7 +146,7 @@ src/
 │   ├── fetcher.ts      # makeFetcher: the one real HTTP fetcher (TLS, headers)
 │   └── discover.ts     # orchestrates sources → filter → dedupe → cap → sort
 ├── capture/
-│   ├── browser.ts      # engine map, launch, newContext
+│   ├── browser.ts      # engine map, launch (pinned flags), newContext (media), renderingMode
 │   ├── stabilize.ts    # wait, disable animations, mask/remove selectors
 │   ├── steps.ts        # runSteps: the step vocabulary → Playwright calls; StepError
 │   ├── setup.ts        # runSetup: log in once per side → in-memory session; SetupError
@@ -148,7 +160,8 @@ src/
 │   └── verdict.ts      # failScore override resolution, pass/fail, exit code
 ├── diff/
 │   ├── normalize.ts    # pad to common dimensions
-│   ├── diff.ts         # pixelmatch → diff PNG + score
+│   ├── diff.ts         # pixelmatch → diff PNG + score + per-side sizes; pad band drawn magenta
+│   ├── regions.ts      # changeRegions: changed pixels → clustered boxes (pure)
 │   ├── worker.ts       # Worker entry
 │   └── pool.ts         # worker pool, dispatch/collect, crash-respawn
 ├── store/
@@ -177,14 +190,16 @@ the ordered, frozen steps in
 through a read-only probe before anything writes to it
 ([ADR-0024](adr/0024-versioned-schema-migrations.md)). v1 is the v0.9.x schema,
 v2 keys the image tables on `target_id`
-([ADR-0021](adr/0021-targets-and-source-provenance.md)), v3 adds run history.
+([ADR-0021](adr/0021-targets-and-source-provenance.md)), v3 adds run history,
+v4 prod setup identity, v5 RFC-0006's columns (per-side sizes, regions,
+instability, retries, rendering).
 
 | Table | Rows | Purpose |
 | --- | --- | --- |
 | `runs` | one per kept run (`output.keepRuns`, default 5) | AUTOINCREMENT ids. Timestamps, dev/prod base URLs, resolved config JSON, status; provenance: momus version, engine + version, config hash, baseline id + identity, allow flags, CI commit/branch/PR. |
-| `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, dimensions, `diff_pixels`, `diff_score`, `fail_score` (the gate that applied), `passed`, `status` (`ok`/`error`/`added`/`removed`), `error`. Unique on `(run_id, target_id, viewport)`. |
-| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, `setup_json` (prod's redacted setup; NULL = none), full `config_json` (credentials redacted). Drives the compatibility gate and report provenance. |
-| `baseline_images` | one per `target × viewport` | `target_id`, `source`, `label`, `recipe_json` (canonical, sorted keys; NULL = no recipe), frozen prod PNG BLOBs plus `status`/`error`. Unique on `(target_id, viewport)`. |
+| `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, padded dimensions and each side's own (`dev_width`…`prod_height`), `diff_pixels`, `diff_score`, `fail_score` (the gate that applied), `passed`, `status` (`ok`/`error`/`added`/`removed`/`unstable`), `error`, `regions_json` (largest 100) + `region_count`, `unstable_regions_json`, `retries`. Unique on `(run_id, target_id, viewport)`. |
+| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, `setup_json` (prod's redacted setup; NULL = none), `rendering` (`pinned`/`host`; NULL = host), full `config_json` (credentials redacted). Drives the compatibility gate and report provenance. |
+| `baseline_images` | one per `target × viewport` | `target_id`, `source`, `label`, `recipe_json` (canonical, sorted keys; NULL = no recipe), frozen prod PNG BLOBs plus `status`/`error`, `unstable_regions_json` (NULL = stable or unverified). Unique on `(target_id, viewport)`. |
 
 `run` inserts a run, then prunes to the newest `output.keepRuns` (0 = keep all)
 and runs `incremental_vacuum`. Each run owns its images outright — no
@@ -209,8 +224,9 @@ built-in defaults**.
 | `requestHeaders` | Sent on discovery fetches and page loads (e.g. CF Access headers). |
 | `discovery` | `urlList`, `sitemap`, `maxPages` (0 = unlimited), `crawl` (bool or object, off by default), `include`/`exclude` globs. |
 | `viewports` | Widths; full-page height each. Gated against the baseline. |
-| `stabilize` | `waitUntil`, `settleMs`, `timeoutMs`, `disableAnimations`, `mask`, `remove`. Gated against the baseline. |
-| `diff` | `threshold` (per-pixel sensitivity) and `failScore` (page-level gate) — two different knobs, see [ADR-0004](adr/0004-two-threshold-knobs.md). Plus per-path `overrides`. |
+| `stabilize` | `waitUntil`, `settleMs`, `timeoutMs`, `disableAnimations`, `mask`, `remove`, `waitForImages`, `clock`, `reducedMotion`, `colorScheme`. Gated against the baseline. `verify` too, but it isn't gated: it changes no pixels. |
+| `retries` | Dev re-captures for a target that fails the gate (0–10, default 0). Not gated. |
+| `diff` | `threshold` (per-pixel sensitivity) and `failScore` (page-level gate) — two different knobs, see [ADR-0004](adr/0004-two-threshold-knobs.md). Plus per-path `overrides`, and `includeAA` (default false: anti-aliasing detection on). |
 | `concurrency` | `screenshots` (the `--concurrency` flag maps here) and `diffWorkers` (config only). |
 | `scenarios` | Targets with `steps` and an optional `capture.element` / `viewports`. Gated per target ([ADR-0029](adr/0029-scenarios-and-step-order.md)). |
 | `setup` | One login per side: shared or `{ dev, prod }`, each `steps` or `storageState`. Prod's is gated, redacted ([ADR-0030](adr/0030-setup-per-side.md)). |
@@ -237,9 +253,13 @@ worker crash, an unreachable URL — each becomes a row with `status='error'` an
 message, surfaced in the report as an error card.
 
 - **Dimension mismatch** (the common case — full-page heights differ): pad the
-  smaller image with transparent pixels to the pair's max width×height. Never
-  scale; scaling corrupts the comparison. The padded region legitimately reads as
-  a diff.
+  smaller image with an opaque magenta sentinel to the pair's max width×height.
+  Never scale; scaling corrupts the comparison. The padded region legitimately
+  reads as a diff; it is drawn magenta in the diff image, the report names the
+  difference ("dev is 40 px taller than prod"), and each side's own size is
+  stored ([ADR-0035](adr/0035-change-regions-and-the-pad-band.md)).
+- **One side fails to capture**: the row is `error`, and it keeps the image of
+  the side that rendered, so the report can show it.
 - **`networkidle` never settles**: capped by `stabilize.timeoutMs`, then capture
   anyway.
 - **Browser missing**: checked up front, names the engine, points at
@@ -259,9 +279,9 @@ message, surfaced in the report as an error card.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Ran; nothing fails the gate: every comparison passed, and any added/removed targets were allowed. |
+| `0` | Ran; nothing fails the gate: every comparison passed or is `unstable`, and any added/removed targets were allowed. |
 | `1` | Ran; at least one comparison failed the gate, errored, or is `added`/`removed` (unless allowed). An error counts as a regression signal, not a silent pass. |
-| `2` | Operational failure that prevented the run: no browser, bad config, discovery threw, baseline conflict, DB from a newer momus, every prod capture failed, setup failed. |
+| `2` | Operational failure that prevented the run: no browser, bad config (including an unknown `MOMUS_RENDERING`), discovery threw, baseline conflict, DB from a newer momus, every prod capture failed, setup failed. |
 
 `momus snapshot` exits `0` even when individual prod pages fail (they become
 error rows) and `2` on operational failure, including every capture failing.
@@ -286,6 +306,10 @@ testing behind the seams listed above.
   test` runs them on chromium, then `test:engines` reruns them for firefox and
   webkit, each in its own process ([ADR-0031](adr/0031-per-engine-test-processes.md)).
   A new multi-engine file must be added to that script by hand.
+- **Isolated browser files** (the determinism tests and the RFC-0006 flake
+  benchmark) run only when `MOMUS_ISOLATED` names them; `bun run test` chains
+  `test:isolated`, one process per file. Sharing the suite's process, they left
+  a later `browser.close()` hanging ([ADR-0036](adr/0036-isolated-browser-test-files.md)).
 - **Integration** serves two tiny static sites from fixtures via `Bun.serve` and
   runs the real pipeline headless against them.
 
@@ -298,4 +322,6 @@ buttons, `data-filter` attributes, status classes, and inline script are wired.
 source** (`bun` + `node_modules`): Playwright resolves `playwright-core` from
 `node_modules` at runtime and cannot be fully bundled into a standalone binary.
 Source mode is also exactly what the test suite exercises. The base image tag
-must track the `playwright` version in `bun.lock` — bump both together.
+must track the `playwright` version in `bun.lock` — bump both together. The
+image sets `MOMUS_RENDERING=pinned`, which makes it the reference rendering
+environment ([ADR-0033](adr/0033-rendering-environment-in-the-gate.md)).
