@@ -1,6 +1,6 @@
 # RFC-0008: CLI CI integration
 
-**Status:** Draft · **Milestone:** M6 · **Created:** 2026-10-16
+**Status:** Withdrawn · **Milestone:** M6 · **Created:** 2026-10-16
 
 ## Summary
 
