@@ -115,3 +115,9 @@ test("the usage text lists each command's flags", () => {
     for (const f of flags) expect(line).toContain(`--${f}`);
   }
 });
+
+test("--help or -h after any command shows the usage", () => {
+  expect(parseCliArgs(["run", "--help"]).command).toBe("help");
+  expect(parseCliArgs(["snapshot", "-h"]).command).toBe("help");
+  expect(parseCliArgs(["report", "--run", "3", "--help"]).command).toBe("help");
+});

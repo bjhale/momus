@@ -9,6 +9,7 @@ import { runFlow } from "../../src/pipeline/run-flow";
 import { ConfigSchema } from "../../src/config/schema";
 import { exitCodeFor } from "../../src/pipeline/verdict";
 import type { DiffResponse } from "../../src/diff/worker";
+import { PNG } from "pngjs";
 
 // RFC-0009: every 1.x release opens, migrates and diffs against a baseline
 // written by any earlier release. Each checked-in DB under tests/fixtures/db
@@ -40,6 +41,12 @@ for (const name of fixtures) {
     expect(userVersion(db)).toBe(LATEST_VERSION);
 
     const baseline = readBaselineImages(db);
+    // The images themselves must survive migration, not just the rows: every
+    // ok baseline image is still a decodable PNG.
+    for (const im of baseline.filter((b) => b.status === "ok")) {
+      expect(im.image?.length ?? 0).toBeGreaterThan(0);
+      expect(PNG.sync.read(Buffer.from(im.image!)).width).toBeGreaterThan(0);
+    }
     const byKey = new Map(baseline.map((im) => [`${im.targetId} ${im.viewport}`, im.image!]));
     const paths = [...new Set(baseline.filter((im) => im.source === "pages").map((im) => im.path))];
     const res = await runFlow({
@@ -48,7 +55,11 @@ for (const name of fixtures) {
       readUrlList: async () => paths.join("\n"),
       captureProd: async () => { throw new Error("a frozen baseline must not recapture prod"); },
       // Dev is the baseline itself: every comparison must pass.
-      getDev: async (job) => ({ ok: true, png: byKey.get(`${job.targetId ?? job.path} ${job.viewport}`)! }),
+      getDev: async (job) => {
+        const png = byKey.get(`${job.targetId ?? job.path} ${job.viewport}`);
+        if (!png) throw new Error(`no baseline image for ${job.targetId ?? job.path} @${job.viewport}`);
+        return { ok: true, png };
+      },
       diffPool: {
         submit: async (a: Uint8Array): Promise<DiffResponse> =>
           ({ id: 1, ok: true, width: 1, height: 1, diffPixels: 0, diffScore: 0, diffPng: a }),

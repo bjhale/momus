@@ -83,6 +83,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   const arg0 = argv[0] ?? "help";
   if (!Object.hasOwn(COMMAND_FLAGS, arg0)) return { command: "help", overrides: {} };
   const command = arg0 as Command;
+  // The first thing people try; it isn't a flag of any one command.
+  if (argv.includes("--help") || argv.includes("-h")) return { command: "help", overrides: {} };
 
   let values: Partial<Record<Flag, string | boolean>>;
   try {
