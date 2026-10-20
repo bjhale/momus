@@ -256,3 +256,7 @@ test("retries is an integer from 0 to 10", () => {
   expect(ConfigSchema.safeParse({ ...base, retries: 11 }).success).toBe(false);
   expect(ConfigSchema.safeParse({ ...base, retries: -1 }).success).toBe(false);
 });
+
+test("output.reportImages defaults to embed", () => {
+  expect(ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com" }).output.reportImages).toBe("embed");
+});

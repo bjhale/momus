@@ -100,7 +100,7 @@ async function runWithDb(parsed: ParsedCli, config: ResolvedConfig, db: Database
   // Read comparisons once and reuse for both the report and the exit code.
   const rows = readComparisons(db, result.runId);
   // config.diff carries allowAdded/allowRemoved; one gate for report and exit code.
-  await writeReport(db, result.runId, config.output.report, rows);
+  await writeReport(db, result.runId, config.output.report, rows, config.output.reportImages);
   const code = exitCodeFor(rows, config.diff);
   // Make freezing explicit: say whether prod was captured now or reused.
   if (result.materialized) {

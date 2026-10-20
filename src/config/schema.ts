@@ -172,6 +172,9 @@ export const ConfigSchema = z.object({
     // Runs kept in output.db; 0 = unlimited. Small by default because the file
     // is often committed (RFC-0002, ADR-0025).
     keepRuns: z.number().int().nonnegative().default(5),
+    // Where the report's images live (RFC-0007): inline (one self-contained
+    // file), beside it, or inline previews with the originals beside it.
+    reportImages: z.enum(["embed", "link", "thumbnails"]).default("embed"),
   }).default({}),
   scenarios: z.array(ScenarioSchema).default([]).superRefine((list, ctx) => {
     const seen = new Set<string>();

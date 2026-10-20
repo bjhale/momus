@@ -41,6 +41,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       commit: { type: "string" },
       branch: { type: "string" },
       pr: { type: "string" },
+      "report-images": { type: "string" },
     },
     allowPositionals: true,
   });
@@ -62,6 +63,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   if (values.browser) overrides.browser = values.browser as string;
   if (values["allow-added"]) overrides.allowAdded = true;
   if (values["allow-removed"]) overrides.allowRemoved = true;
+  if (values["report-images"]) overrides.reportImages = values["report-images"] as string;
 
   let runId: number | undefined;
   if (values.run !== undefined) {
@@ -109,7 +111,7 @@ async function main(): Promise<void> {
         process.exit(await reportCommand(parsed));
       }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus report [--run ID] [--out FILE] [--config FILE]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed] [--commit SHA] [--branch NAME] [--pr N]`);
+        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus report [--run ID] [--out FILE] [--report-images MODE] [--config FILE]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed] [--report-images MODE] [--commit SHA] [--branch NAME] [--pr N]`);
         process.exit(0);
     }
   } catch (err) {

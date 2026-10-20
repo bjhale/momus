@@ -14,6 +14,7 @@ export interface CliOverrides {
   browser?: string;
   allowAdded?: boolean;
   allowRemoved?: boolean;
+  reportImages?: string;
 }
 
 /** Merge file config + CLI overrides, then validate. CLI wins (spec §6). */
@@ -23,6 +24,9 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
   if (cli.prod !== undefined) merged.prod = cli.prod;
   if (cli.out !== undefined) {
     merged.output = { ...(merged.output ?? {}), report: cli.out };
+  }
+  if (cli.reportImages !== undefined) {
+    merged.output = { ...(merged.output ?? {}), reportImages: cli.reportImages as NonNullable<RawConfig["output"]>["reportImages"] };
   }
   if (cli.concurrency !== undefined) {
     merged.concurrency = { ...(merged.concurrency ?? {}), screenshots: cli.concurrency };

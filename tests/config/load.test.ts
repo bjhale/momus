@@ -91,3 +91,10 @@ test("config errors are readable lines, one per issue, not ZodError JSON", () =>
     "setup.steps.1.fill.1: fill value is undefined — is the environment variable set?",
   ]);
 });
+
+test("--report-images beats output.reportImages, and an unknown mode is a config error", () => {
+  expect(resolveConfig({ ...base, output: { reportImages: "link" } }, { reportImages: "thumbnails" }).output.reportImages)
+    .toBe("thumbnails");
+  expect(resolveConfig({ ...base, output: { reportImages: "link" } }, {}).output.reportImages).toBe("link");
+  expect(() => resolveConfig(base, { reportImages: "big" })).toThrow(/^output\.reportImages: /);
+});

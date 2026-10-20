@@ -39,7 +39,7 @@ export async function reportCommand(parsed: ParsedCli): Promise<number> {
       console.error(`Run ${runId} not found in ${config.output.db}. Available: ${listRunIds(db).join(", ")}.`);
       return 2;
     }
-    await writeReport(db, runId, config.output.report);
+    await writeReport(db, runId, config.output.report, undefined, config.output.reportImages);
     // Rendering succeeded, so exit 0, but the report says FAIL for a reason
     // the terminal user should hear too.
     if (run.status !== "complete") {

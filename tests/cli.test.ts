@@ -78,3 +78,8 @@ test("snapshot --snapshot is an error, not a silent no-op", () => {
   expect(() => parseCliArgs(["snapshot", "--snapshot"])).toThrow("unknown flag for snapshot: --snapshot");
   expect(parseCliArgs(["run", "--snapshot"]).forceSnapshot).toBe(true);
 });
+
+test("parses --report-images", () => {
+  expect(parseCliArgs(["report", "--report-images", "thumbnails"]).overrides.reportImages).toBe("thumbnails");
+  expect(parseCliArgs(["run"]).overrides.reportImages).toBeUndefined();
+});
