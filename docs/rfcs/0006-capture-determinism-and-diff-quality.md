@@ -108,9 +108,11 @@ Recording it is a schema change, so it ships as a new migration
   so that a baseline from a bare-metal Chromium is refused?~~ Resolved on
   2026-10-18: yes, as a single `rendering: "pinned" | "host"` value in the gate,
   not the individual flags. See Pinned rendering and Compatibility.
-- Should the engine version join the gate too? Snapshots already record it but
+- ~~Should the engine version join the gate too? Snapshots already record it but
   the gate ignores it. Gating it would catch rendering drift across browser
-  upgrades, at the cost of refusing every baseline after a Playwright bump.
+  upgrades, at the cost of refusing every baseline after a Playwright bump.~~
+  Resolved on 2026-10-20 in [RFC-0009](0009-stability-contract.md): yes, a
+  hard gate.
 
 ## Done when
 

@@ -1,6 +1,6 @@
 # RFC-0009: The 1.0 stability contract
 
-**Status:** Draft · **Milestone:** 1.0 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** 1.0 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -41,8 +41,12 @@ will build on momus once they can rely on it.
 
 - **Pixels across releases.** Upgrading Playwright or the base image can change
   rendering. Every release records its engine version on each run. A release
-  that bumps the engine's major version says so in the changelog, and the
-  compatibility gate warns when a baseline's engine version differs.
+  that bumps the engine's version says so in the changelog, and the
+  compatibility gate refuses a baseline captured with a different engine
+  version ([ADR-0010](../adr/0010-baseline-compatibility-gate.md)), so the
+  upgrade costs a `momus snapshot` rather than a run of false diffs.
+- **Reading 1.x databases from 2.x.** The 2.0 server imports a 1.x `.sqlite`
+  once ([RFC-0010](0010-server.md)); the 2.x CLI need not open one directly.
 - The HTML report's markup, log text, and progress output.
 - Anything under `src/` that `index.ts` doesn't export.
 
@@ -67,6 +71,10 @@ changelog has a "Deprecated" section in every release.
   Changelog sections, rather than relying only on generated release notes.
 - **Compatibility tests:** check in a fixture `.sqlite` for every minor release
   from 1.0 onward. CI opens and diffs each one.
+- **Gate the engine version.** Snapshots already record it; the compatibility
+  gate compares it and refuses a mismatch with a message that names both
+  versions and says to re-snapshot. Baselines recorded before the change need
+  a backward-compatible reading, so it needs an ADR.
 
 ### Release cadence
 
@@ -79,16 +87,21 @@ contract frozen. Only fixes land during that window.
 
 ## Open questions
 
-- Should the `.sqlite` promise cover *reading* 1.x DBs from 2.x, or is 2.0
-  allowed to require a one-time export or import into the server?
-- Should engine-version drift be a warning or a hard gate? A hard gate is
-  correct but forces a re-baseline on many routine upgrades.
+- ~~Should the `.sqlite` promise cover *reading* 1.x DBs from 2.x, or is 2.0
+  allowed to require a one-time export or import into the server?~~ Resolved
+  on 2026-10-20: a one-time import into the server is enough. See What it
+  doesn't cover.
+- ~~Should engine-version drift be a warning or a hard gate? A hard gate is
+  correct but forces a re-baseline on many routine upgrades.~~ Resolved on
+  2026-10-20: a hard gate. See What it doesn't cover and Work to reach the
+  contract.
 
 ## Done when
 
 - [ ] Milestones M1 to M6 are shipped.
 - [ ] Flags are validated per command and unknown config keys are rejected,
       each with an ADR.
+- [ ] The engine version is gated, with an ADR.
 - [ ] The public API is decided and documented.
 - [ ] The documentation covers every field, command and recipe.
 - [ ] A changelog, a deprecation policy, and compatibility fixture tests are in

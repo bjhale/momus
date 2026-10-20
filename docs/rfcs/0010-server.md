@@ -83,7 +83,8 @@ These are commitments in the 1.x RFCs, collected here:
 - Does Bun on the server match the CLI's stack, or does the server pick its own?
 - How do branch baselines work across forks and squash merges?
 - What is the migration path for a team's existing `.sqlite` history: import,
-  or start fresh?
+  or start fresh? [RFC-0009](0009-stability-contract.md) settles that a
+  one-time import is acceptable; how the import works is still open.
 - Does a CLI-only team get any approval, for example a server-free
   `momus approve` that writes the local `.sqlite`? If so, it must be designed
   alongside the server's model, not before it.
