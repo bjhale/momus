@@ -56,7 +56,9 @@ rather than near-simultaneously. That temporal skew is inherent to a frozen
 baseline; selector masking is the mitigation.
 
 Before diffing, a **compatibility gate** ([compat.ts](../src/pipeline/compat.ts))
-compares the live config's prod origin, `browser`, `viewports`, `stabilize`,
+compares the live config's prod origin, `browser` and the engine's exact
+version (unknown on a pre-v6 baseline, so not compared;
+[ADR-0038](adr/0038-engine-version-in-the-gate.md)), `viewports`, `stabilize`,
 prod `setup`, and the rendering environment (`pinned` in the Docker image,
 `host` elsewhere; [ADR-0033](adr/0033-rendering-environment-in-the-gate.md))
 against the baseline's. Any mismatch is a hard error (exit 2) — a dev capture at
@@ -204,7 +206,7 @@ instability, retries, rendering).
 | --- | --- | --- |
 | `runs` | one per kept run (`output.keepRuns`, default 5) | AUTOINCREMENT ids. Timestamps, dev/prod base URLs, resolved config JSON, status; provenance: momus version, engine + version, config hash, baseline id + identity, allow flags, CI commit/branch/PR. |
 | `comparisons` | one per `target × viewport` | `target_id`, `source`, `label`, dev/prod/diff PNG BLOBs, padded dimensions and each side's own (`dev_width`…`prod_height`), `diff_pixels`, `diff_score`, `fail_score` (the gate that applied), `passed`, `status` (`ok`/`error`/`added`/`removed`/`unstable`), `error`, `regions_json` (largest 100) + `region_count`, `unstable_regions_json`, `retries`. Unique on `(run_id, target_id, viewport)`. |
-| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, `setup_json` (prod's redacted setup; NULL = none), `rendering` (`pinned`/`host`; NULL = host), full `config_json` (credentials redacted). Drives the compatibility gate and report provenance. |
+| `snapshot` | one; id never reused | The baseline's identity: `created_at`, `prod_base_url`, `viewports_json`, `stabilize_json`, `browser`, `setup_json` (prod's redacted setup; NULL = none), `rendering` (`pinned`/`host`; NULL = host), `engine_version` (NULL = recorded before v6), full `config_json` (credentials redacted). Drives the compatibility gate and report provenance. |
 | `baseline_images` | one per `target × viewport` | `target_id`, `source`, `label`, `recipe_json` (canonical, sorted keys; NULL = no recipe), frozen prod PNG BLOBs plus `status`/`error`, `unstable_regions_json` (NULL = stable or unverified). Unique on `(target_id, viewport)`. |
 
 `run` inserts a run, then prunes to the newest `output.keepRuns` (0 = keep all)
@@ -287,7 +289,7 @@ message, surfaced in the report as an error card.
 | --- | --- |
 | `0` | Ran; nothing fails the gate: every comparison passed or is `unstable`, and any added/removed targets were allowed. |
 | `1` | Ran; at least one comparison failed the gate, errored, or is `added`/`removed` (unless allowed). An error counts as a regression signal, not a silent pass. |
-| `2` | Operational failure that prevented the run: no browser, bad config (including an unknown `MOMUS_RENDERING`), discovery threw, baseline conflict, DB from a newer momus, every prod capture failed, setup failed. |
+| `2` | Operational failure that prevented the run: an unknown flag or argument, bad config (including an unknown key or `MOMUS_RENDERING`), no browser, discovery threw, baseline conflict, DB from a newer momus, every prod capture failed, setup failed. |
 
 `momus snapshot` exits `0` even when individual prod pages fail (they become
 error rows) and `2` on operational failure, including every capture failing.

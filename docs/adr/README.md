@@ -49,6 +49,10 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0035](0035-change-regions-and-the-pad-band.md) | Change regions are grid-clustered boxes; the pad band is magenta and counts as a region | 2026-10-18 |
 | [0036](0036-bun-1-4-3-one-test-process.md) | Bun 1.4.3, because 1.3.14 double-closes child-process descriptors; browser tests share one process | 2026-10-19 |
 | [0037](0037-report-requires-javascript.md) | The report requires JavaScript; images can be linked or previewed as WebP thumbnails | 2026-10-19 |
+| [0038](0038-engine-version-in-the-gate.md) | The browser engine version joins the compatibility gate; unknown versions aren't compared | 2026-10-20 |
+| [0039](0039-flags-per-command.md) | Each command accepts only its own flags | 2026-10-20 |
+| [0040](0040-strict-config.md) | Unknown config keys are an error, with a suggestion | 2026-10-20 |
+| [0041](0041-public-api-is-defineconfig.md) | The 1.x programmatic API is `defineConfig` and the config types | 2026-10-20 |
 
 ## Open questions
 

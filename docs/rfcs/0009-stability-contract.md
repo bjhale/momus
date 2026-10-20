@@ -1,6 +1,6 @@
 # RFC-0009: The 1.0 stability contract
 
-**Status:** Accepted · **Milestone:** 1.0 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** 1.0 · **Created:** 2026-10-16 · **ADRs:** [0038](../adr/0038-engine-version-in-the-gate.md), [0039](../adr/0039-flags-per-command.md), [0040](../adr/0040-strict-config.md), [0041](../adr/0041-public-api-is-defineconfig.md)
 
 ## Summary
 
@@ -71,8 +71,8 @@ changelog has a "Deprecated" section in every release.
   Changelog sections, rather than relying only on generated release notes.
 - **Compatibility tests:** check in a fixture `.sqlite` for every minor release
   from 1.0 onward. CI opens and diffs each one.
-- **Gate the engine version.** Snapshots already record it; the compatibility
-  gate compares it and refuses a mismatch with a message that names both
+- **Gate the engine version.** Runs already record it; the baseline must too,
+  and the compatibility gate compares it and refuses a mismatch with a message that names both
   versions and says to re-snapshot. Baselines recorded before the change need
   a backward-compatible reading, so it needs an ADR.
 
@@ -99,11 +99,12 @@ contract frozen. Only fixes land during that window.
 ## Done when
 
 - [ ] Milestones M1 to M6 are shipped.
-- [ ] Flags are validated per command and unknown config keys are rejected,
+- [x] Flags are validated per command and unknown config keys are rejected,
       each with an ADR.
-- [ ] The engine version is gated, with an ADR.
-- [ ] The public API is decided and documented.
-- [ ] The documentation covers every field, command and recipe.
-- [ ] A changelog, a deprecation policy, and compatibility fixture tests are in
+- [x] The engine version is gated, with an ADR.
+- [x] The public API is decided and documented: `defineConfig` only.
+- [x] The documentation covers every field, command and recipe
+      (`tests/docs.test.ts` keeps it so).
+- [x] A changelog, a deprecation policy, and compatibility fixture tests are in
       CI.
 - [ ] RC period completed.

@@ -41,7 +41,7 @@ break things, and the changelog says so when they do.
 | ~~**M4** Components~~ | No Storybook-specific support; stories are listed as pages. | [0005](docs/rfcs/0005-storybook.md) | Withdrawn |
 | **M5** Signal quality | Fewer false diffs; honest reporting of the ones that remain. | [0006](docs/rfcs/0006-capture-determinism-and-diff-quality.md) | Done |
 | **M6** Review & CI ergonomics | Report v2 for review and triage; machine-readable output; a GitHub Action. | [0007](docs/rfcs/0007-review-report.md), [0008](docs/rfcs/0008-cli-ci-integration.md) | In progress |
-| **1.0** | Freeze the contract. | [0009](docs/rfcs/0009-stability-contract.md) | Not started |
+| **1.0** | Freeze the contract. | [0009](docs/rfcs/0009-stability-contract.md) | In progress |
 
 ### Ordering
 
