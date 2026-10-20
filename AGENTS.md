@@ -2,7 +2,9 @@
 
 Orientation for coding agents working in this repo. Humans should start with
 [README.md](README.md) (usage) and [CONTRIBUTING.md](CONTRIBUTING.md) (setup and
-release).
+release). User-facing reference lives in `docs/` (`cli.md`, `config.md`,
+`ci.md`, `stability.md`); `tests/docs.test.ts` fails when a config field or
+flag isn't documented there.
 
 ## What momus is
 

@@ -1,8 +1,9 @@
 # momus — Architecture
 
 How momus is built and why the pieces sit where they do. For usage, see the
-[README](../README.md). For the reasoning behind specific choices, see the
-[decision records](adr/).
+[README](../README.md) and the reference: [commands](cli.md),
+[configuration](config.md), [CI](ci.md), [stability](stability.md). For the
+reasoning behind specific choices, see the [decision records](adr/).
 
 ## What it is
 
