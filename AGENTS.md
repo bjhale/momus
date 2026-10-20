@@ -54,10 +54,12 @@ Break these and the tool is subtly wrong rather than obviously broken:
 - **Every schema change is a new migration** in `src/store/migrations.ts`.
   Never edit a released step, and keep `tests/fixtures/db/v0.9.4.sqlite` opening
   and diffing. ([ADR-0024](docs/adr/0024-versioned-schema-migrations.md))
-- **CLI flags beat config-file values beat defaults.** Flags are registered
-  globally in `parseArgs`, so a flag only one command reads is still accepted by
-  the others. The one exception is `momus snapshot --snapshot`, rejected at parse
-  time ([ADR-0026](docs/adr/0026-prod-origin-in-the-gate.md)).
+- **CLI flags beat config-file values beat defaults.** Each command accepts
+  only its own flags (`COMMAND_FLAGS` in `src/cli.ts`); any other flag or a
+  stray argument is an error, and so is an unknown config key
+  ([ADR-0039](docs/adr/0039-flags-per-command.md),
+  [ADR-0040](docs/adr/0040-strict-config.md)). A new flag goes in
+  `COMMAND_FLAGS` for every command that reads it.
 
 ## Testing conventions
 

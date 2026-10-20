@@ -17,39 +17,83 @@ export interface ParsedCli {
   ci?: CiMetadata;
 }
 
+type Command = Exclude<ParsedCli["command"], "help">;
+
+/** Every flag, with its type and the placeholder the usage text shows. */
+const FLAGS = {
+  dev: { type: "string", arg: "URL" },
+  prod: { type: "string", arg: "URL" },
+  out: { type: "string", arg: "FILE" },
+  config: { type: "string", arg: "FILE" },
+  concurrency: { type: "string", arg: "N" },
+  "max-pages": { type: "string", arg: "N" },
+  crawl: { type: "boolean" },
+  insecure: { type: "boolean" },
+  browser: { type: "string", arg: "NAME" },
+  snapshot: { type: "boolean" },
+  run: { type: "string", arg: "ID" },
+  "allow-added": { type: "boolean" },
+  "allow-removed": { type: "boolean" },
+  "report-images": { type: "string", arg: "MODE" },
+  commit: { type: "string", arg: "SHA" },
+  branch: { type: "string", arg: "NAME" },
+  pr: { type: "string", arg: "N" },
+} as const satisfies Record<string, { type: "string" | "boolean"; arg?: string }>;
+type Flag = keyof typeof FLAGS;
+
+/** The flags each command takes. Anything else is an error, so a flag can't
+ * be silently ignored by a command that doesn't read it (RFC-0009, ADR-0039). */
+export const COMMAND_FLAGS: Record<Command, readonly Flag[]> = {
+  run: ["dev", "prod", "out", "config", "concurrency", "max-pages", "crawl", "insecure", "browser", "snapshot",
+    "allow-added", "allow-removed", "report-images", "commit", "branch", "pr"],
+  snapshot: ["prod", "config", "concurrency", "max-pages", "crawl", "insecure", "browser"],
+  report: ["run", "out", "report-images", "config"],
+  init: [],
+  "install-browser": [],
+};
+
+export function usage(): string {
+  const line = (c: Command) => `  momus ${c}` + COMMAND_FLAGS[c].map((f) => {
+    const d = FLAGS[f] as { arg?: string };
+    return ` [--${f}${d.arg ? ` ${d.arg}` : ""}]`;
+  }).join("");
+  const order: Command[] = ["init", "install-browser", "snapshot", "report", "run"];
+  return `momus — visual regression diff\n\nUsage:\n${order.map(line).join("\n")}`;
+}
+
+/** parseArgs' errors name neither the command nor what to use instead. */
+function argError(command: Command, err: unknown): Error {
+  const code = (err as { code?: string }).code;
+  const msg = err instanceof Error ? err.message : String(err);
+  if (code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
+    const flag = /'(-[^']*)'/.exec(msg)?.[1] ?? msg;
+    const name = flag.replace(/^-+/, "");
+    const owners = (Object.keys(COMMAND_FLAGS) as Command[])
+      .filter((c) => (COMMAND_FLAGS[c] as readonly string[]).includes(name));
+    return new Error(`unknown flag for ${command}: ${flag}${owners.length ? ` (it is a flag of ${owners.join(", ")})` : ""}`);
+  }
+  if (code === "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL") {
+    const arg = /'([^']*)'/.exec(msg)?.[1] ?? msg;
+    return new Error(`unexpected argument for ${command}: ${arg}`);
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 export function parseCliArgs(argv: string[]): ParsedCli {
-  const command = (argv[0] ?? "help") as ParsedCli["command"];
-  const known = new Set(["run", "snapshot", "report", "init", "install-browser"]);
-  if (!known.has(command)) return { command: "help", overrides: {} };
+  const arg0 = argv[0] ?? "help";
+  if (!Object.hasOwn(COMMAND_FLAGS, arg0)) return { command: "help", overrides: {} };
+  const command = arg0 as Command;
 
-  const { values } = parseArgs({
-    args: argv.slice(1),
-    options: {
-      dev: { type: "string" },
-      prod: { type: "string" },
-      out: { type: "string" },
-      config: { type: "string" },
-      concurrency: { type: "string" },
-      crawl: { type: "boolean" },
-      "max-pages": { type: "string" },
-      insecure: { type: "boolean" },
-      browser: { type: "string" },
-      snapshot: { type: "boolean" },
-      run: { type: "string" },
-      "allow-added": { type: "boolean" },
-      "allow-removed": { type: "boolean" },
-      commit: { type: "string" },
-      branch: { type: "string" },
-      pr: { type: "string" },
-      "report-images": { type: "string" },
-    },
-    allowPositionals: true,
-  });
-
-  // Flags are global (AGENTS.md); per-command validation is RFC-0009's job.
-  // This one is rejected now because it reads like it does something.
-  if (command === "snapshot" && values.snapshot) {
-    throw new Error("unknown flag for snapshot: --snapshot (did you mean `momus run --snapshot`?)");
+  let values: Partial<Record<Flag, string | boolean>>;
+  try {
+    values = parseArgs({
+      args: argv.slice(1),
+      options: Object.fromEntries(COMMAND_FLAGS[command].map((f) => [f, { type: FLAGS[f].type }])),
+      strict: true,
+      allowPositionals: false,
+    }).values as Partial<Record<Flag, string | boolean>>;
+  } catch (err) {
+    throw argError(command, err);
   }
 
   const overrides: CliOverrides = {};
@@ -111,7 +155,7 @@ async function main(): Promise<void> {
         process.exit(await reportCommand(parsed));
       }
       default:
-        console.log(`momus — visual regression diff\n\nUsage:\n  momus init\n  momus install-browser\n  momus snapshot [--prod URL] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME]\n  momus report [--run ID] [--out FILE] [--report-images MODE] [--config FILE]\n  momus run [--dev URL] [--prod URL] [--out FILE] [--config FILE] [--concurrency N] [--max-pages N] [--crawl] [--insecure] [--browser NAME] [--snapshot] [--allow-added] [--allow-removed] [--report-images MODE] [--commit SHA] [--branch NAME] [--pr N]`);
+        console.log(usage());
         process.exit(0);
     }
   } catch (err) {
