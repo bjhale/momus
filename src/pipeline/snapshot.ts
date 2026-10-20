@@ -30,6 +30,8 @@ export interface SnapshotPipelineArgs {
   diffPool?: DiffPoolLike;
   /** The environment capturing it, recorded on the snapshot. Default "host". */
   rendering?: Rendering;
+  /** The capturing browser's version, recorded for the gate (ADR-0038). */
+  engineVersion?: string;
 }
 
 /** `stabilize.verify`: capture the target again and diff the two. Any changed
@@ -135,6 +137,7 @@ export async function snapshotPipeline(args: SnapshotPipelineArgs): Promise<void
       setupJson: setupIdentity(config),
       browser: config.browser,
       rendering: args.rendering ?? "host",
+      engineVersion: args.engineVersion,
     });
     db.exec("COMMIT;");
     committed = true;

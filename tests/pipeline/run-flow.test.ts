@@ -394,7 +394,7 @@ test("runs accumulate across invocations and record the baseline they used", asy
   const run = readRun(db, r2.runId)!;
   expect(run.baselineId).toBe(snap.id);
   expect(JSON.parse(run.baselineJson!)).toEqual({
-    browser: "chromium", createdAt: "t1", id: snap.id, prodBaseUrl: "https://www.example.com", rendering: "host",
+    browser: "chromium", createdAt: "t1", engineVersion: "131.0", id: snap.id, prodBaseUrl: "https://www.example.com", rendering: "host",
     stabilize: snap.stabilize, viewports: [1280],
   });
   expect(run.engineVersion).toBe("131.0");
@@ -582,4 +582,17 @@ test("a pinned baseline is refused by a host run", async () => {
   const res = await runFlow({ ...args, rendering: "host" });
   expect(res.ok).toBe(false);
   if (!res.ok) expect(res.conflict).toContain("rendering");
+});
+
+test("a materialized baseline records the engine version, and another version conflicts", async () => {
+  const db = openDb(":memory:");
+  const base = {
+    db, discover: async () => ["/"], captureProd: async () => ({ ok: true as const, png: png(100) }),
+    getDev: async () => ({ ok: true as const, png: png(150) }), diffPool,
+  };
+  expect((await runFlow({ ...base, config: cfg(), now: "t1", engineVersion: "130.0.1" })).ok).toBe(true);
+  expect(readSnapshot(db)!.engineVersion).toBe("130.0.1");
+  const res = await runFlow({ ...base, config: cfg(), now: "t2", engineVersion: "131.0.2" });
+  expect(res.ok).toBe(false);
+  expect(!res.ok && res.conflict).toContain("engine version");
 });

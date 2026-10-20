@@ -72,6 +72,8 @@ test("the v0.9.4 baseline diffs unchanged: dev identical to the baseline passes 
     captureProd: async () => { throw new Error("a frozen baseline must not recapture prod"); },
     getDev: async (job) => ({ ok: true, png: byPath.get(job.path)! }),
     diffPool,
+    // v0.9.4 recorded no engine version on its baseline, so none is compared.
+    engineVersion: "999.0.0",
   });
   expect(res.ok).toBe(true);
   const after = readBaselineImages(db);

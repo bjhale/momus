@@ -24,7 +24,9 @@ const shown = (v: unknown) => (v === null ? "unset" : JSON.stringify(v));
  * settings. Returns a reason string on mismatch,
  * or null when the live config is compatible with the baseline. Compared
  * field-by-field so SQLite/JSON key ordering can never cause a false mismatch. */
-export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta, rendering: Rendering = "host"): string | null {
+export function baselineConflict(
+  config: ResolvedConfig, snapshot: SnapshotMeta, rendering: Rendering = "host", engineVersion?: string,
+): string | null {
   // A baseline from another site makes every diff meaningless while looking
   // clean. This also covers `run --prod`, which overrides config.prod
   // (ADR-0026). Origins, not full URLs: a trailing slash isn't another site.
@@ -37,6 +39,15 @@ export function baselineConflict(config: ResolvedConfig, snapshot: SnapshotMeta,
 
   if (config.browser !== (snapshot.browser ?? "chromium")) {
     return `browser differs: config "${config.browser}" vs baseline "${snapshot.browser ?? "chromium"}"`;
+  }
+
+  // A browser upgrade changes rendering, so a baseline only diffs against the
+  // version that captured it (RFC-0009, ADR-0038). Unknown on either side, no
+  // comparison: a pre-v6 baseline stays diffable until it is next captured.
+  if (engineVersion && snapshot.engineVersion && engineVersion !== snapshot.engineVersion) {
+    return `browser engine version differs: this run's ${config.browser} is "${engineVersion}" vs baseline ` +
+      `"${snapshot.engineVersion}". A browser upgrade changes rendering; re-capture the baseline with ` +
+      "`momus run --snapshot` (or `momus snapshot`).";
   }
 
   // One value for the environment, not its flags: tuning the pinned flags is

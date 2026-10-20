@@ -182,3 +182,20 @@ test("a pinned run against a host baseline explains that older baselines read as
   expect(msg).toContain("predates pinned rendering");
   expect(msg).toContain("momus snapshot");
 });
+
+// --- RFC-0009: the engine version is a hard gate (ADR-0038) ---
+
+test("differing engine version → conflict naming both versions and re-snapshot", () => {
+  const c = cfg();
+  const msg = baselineConflict(c, { ...snapFrom(c), engineVersion: "130.0.1" }, "host", "131.0.2");
+  expect(msg).toContain('"131.0.2"');
+  expect(msg).toContain('"130.0.1"');
+  expect(msg).toContain("momus snapshot");
+  expect(baselineConflict(c, { ...snapFrom(c), engineVersion: "130.0.1" }, "host", "130.0.1")).toBeNull();
+});
+
+test("a baseline without an engine version, or a run that doesn't know its own, is not compared", () => {
+  const c = cfg();
+  expect(baselineConflict(c, snapFrom(c), "host", "131.0.2")).toBeNull();
+  expect(baselineConflict(c, { ...snapFrom(c), engineVersion: "130.0.1" }, "host")).toBeNull();
+});

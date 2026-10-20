@@ -236,12 +236,21 @@ function v5(db: Database): void {
   db.exec("ALTER TABLE comparisons ADD COLUMN unstable_regions_json TEXT;");
 }
 
+// --- v6: the browser engine version the baseline was captured with
+// (RFC-0009, ADR-0038). NULL on older baselines, which the gate doesn't
+// compare: their version is unknowable, and refusing them would force every
+// existing user to re-capture on upgrade.
+function v6(db: Database): void {
+  db.exec("ALTER TABLE snapshot ADD COLUMN engine_version TEXT;");
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: v1 },
   { version: 2, up: v2, vacuum: true },
   { version: 3, up: v3, vacuum: true },
   { version: 4, up: v4 },
   { version: 5, up: v5 },
+  { version: 6, up: v6 },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

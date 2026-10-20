@@ -57,6 +57,7 @@ export function baselineIdentityJson(s: SnapshotMeta): string {
     id: s.id, createdAt: s.createdAt, prodBaseUrl: s.prodBaseUrl,
     browser: s.browser ?? "chromium", rendering: s.rendering ?? "host", viewports: s.viewports, stabilize: s.stabilize,
     ...(s.setupJson ? { setup: s.setupJson } : {}),
+    ...(s.engineVersion ? { engineVersion: s.engineVersion } : {}),
   })!;
 }
 
@@ -81,12 +82,13 @@ export async function runFlow(args: RunFlowArgs): Promise<RunFlowResult> {
       progress: args.progress,
       diffPool: args.diffPool,
       rendering: args.rendering,
+      engineVersion: args.engineVersion,
     });
     snapshot = readSnapshot(db)!;
     materialized = true;
   }
 
-  const conflict = baselineConflict(config, snapshot, args.rendering ?? "host");
+  const conflict = baselineConflict(config, snapshot, args.rendering ?? "host", args.engineVersion);
   if (conflict) return { ok: false, conflict };
   // A materialized baseline is already committed if this throws; intended: the baseline is valid, there's just no run.
   await args.setupDev?.();

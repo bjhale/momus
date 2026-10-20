@@ -162,15 +162,18 @@ export interface SnapshotMeta {
   setupJson?: string | null;
   /** Absent reads as "host": nothing was pinned before RFC-0006. */
   rendering?: Rendering;
+  /** The engine's own version string; absent on baselines from before v6,
+   * which the gate doesn't compare (ADR-0038). */
+  engineVersion?: string;
 }
 
 export function writeSnapshot(db: Database, m: SnapshotMeta): number {
   db.exec("DELETE FROM snapshot;");
   const res = db.query(
-    `INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser, setup_json, rendering)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO snapshot (created_at, prod_base_url, viewports_json, stabilize_json, config_json, browser, setup_json, rendering, engine_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(m.createdAt, m.prodBaseUrl, JSON.stringify(m.viewports), JSON.stringify(m.stabilize), m.configJson,
-    m.browser ?? "chromium", m.setupJson ?? null, m.rendering ?? "host");
+    m.browser ?? "chromium", m.setupJson ?? null, m.rendering ?? "host", m.engineVersion ?? null);
   return Number(res.lastInsertRowid);
 }
 
@@ -187,6 +190,7 @@ export function readSnapshot(db: Database): SnapshotMeta | null {
     browser: (row.browser ?? "chromium") as BrowserEngine,
     setupJson: row.setup_json ?? null,
     rendering: (row.rendering ?? "host") as Rendering,
+    engineVersion: row.engine_version ?? undefined,
   };
 }
 

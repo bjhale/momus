@@ -76,6 +76,7 @@ async function snapshotWithDb(config: ResolvedConfig, db: Database, rendering: R
       progress,
       diffPool,
       rendering,
+      engineVersion: browser.version(),
     });
   } catch (err) {
     console.error(`Snapshot failed: ${err instanceof Error ? err.message : err}`);

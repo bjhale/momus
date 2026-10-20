@@ -147,5 +147,11 @@ test("v5 adds RFC-0006's columns", () => {
   for (const c of ["dev_width", "dev_height", "prod_width", "prod_height", "region_count", "regions_json", "unstable_regions_json", "retries"]) {
     expect(cols("comparisons")).toContain(c);
   }
-  expect(LATEST_VERSION).toBe(5);
+});
+
+test("v6 records the baseline's engine version", () => {
+  const db = openDb(":memory:");
+  expect(LATEST_VERSION).toBe(6);
+  const cols = (db.query("PRAGMA table_info(snapshot)").all() as { name: string }[]).map((c) => c.name);
+  expect(cols).toContain("engine_version");
 });
