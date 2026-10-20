@@ -3,10 +3,9 @@ import { test, expect, beforeAll, afterAll } from "bun:test";
 import { PNG } from "pngjs";
 import { launchBrowser } from "../../src/capture/browser";
 import { capture, type StabilizeOptions } from "../../src/capture/screenshot";
-import { isolated, launchable } from "../helpers/engines";
+import { launchable } from "../helpers/engines";
 
-// Isolated: in the shared suite process this file left later closes hanging.
-const installed = isolated("determinism") && await launchable("chromium");
+const installed = await launchable("chromium");
 const maybe = installed ? test : test.skip;
 
 const STAB: StabilizeOptions = {
@@ -36,8 +35,7 @@ const pages: Record<string, string> = {
 };
 
 let server: ReturnType<typeof Bun.serve>;
-// One browser per file: each launch/close cycle risks Bun's intermittent
-// child-process hang on close (see setup.integration.test.ts).
+// One browser per file: launching is the slow part.
 let browser: Awaited<ReturnType<typeof launchBrowser>>;
 beforeAll(async () => {
   server = Bun.serve({
@@ -57,8 +55,7 @@ beforeAll(async () => {
   });
   if (installed) browser = await launchBrowser();
 });
-// Server first: stop(true) drops the /never.png request still open, and a
-// browser closed with a request in flight left later files' closes hanging.
+// Server first: stop(true) drops the /never.png request still open.
 afterAll(async () => {
   await server.stop(true);
   await browser?.close();

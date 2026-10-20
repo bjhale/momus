@@ -1,6 +1,6 @@
 # ADR-0031: Each non-default browser engine's tests run in their own process
 
-**Date:** 2026-10-17 · **Status:** Accepted
+**Date:** 2026-10-17 · **Status:** Superseded by [ADR-0036](0036-bun-1-4-3-one-test-process.md)
 
 ## Context
 

@@ -18,7 +18,7 @@ FROM mcr.microsoft.com/playwright:v1.62.1-resolute
 
 # Bun runtime (matches the version momus was built and tested against). Copied
 # from the official image so it tracks the target arch under buildx.
-COPY --from=oven/bun:1.3.14 /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.3 /usr/local/bin/bun /usr/local/bin/bun
 
 # Install dependencies. Bun does not run lifecycle scripts by default, so
 # Playwright's browser-download postinstall does NOT fire — we intentionally use

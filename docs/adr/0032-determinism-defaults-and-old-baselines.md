@@ -44,9 +44,9 @@ is never requested, so waiting on it would spend the whole `timeoutMs` on
 every capture. Images a scenario step reveals are not waited for: the wait
 runs before the steps.
 
-**The image wait runs inside the page with its own timer.** Racing a
-Node-side timeout left a `page.evaluate` pending on an image that never loads,
-and under Bun a later `browser.close()` then hung. A related finding: the
+**The image wait runs inside the page with its own timer**, so the
+`page.evaluate` always settles; racing a Node-side timeout would leave it
+pending on an image that never loads. A related finding: the
 post-scroll `waitForLoadState("networkidle")` returns at once, because
 Playwright's load states are sticky once reached. So images that scrolling
 requested were never waited for until `waitForImages`. Other scroll-triggered

@@ -7,8 +7,7 @@ import { launchable } from "../helpers/engines";
 
 const canLaunch = await launchable("chromium");
 const maybe = canLaunch ? test : test.skip;
-// Shared per file: each browser launch/close cycle risks Bun's intermittent
-// child-process hang on close, so launch once. Isolation holds because every
+// Shared per file: launching is the slow part, and isolation holds because every
 // capture and setup opens its own browser context.
 let browser: Awaited<ReturnType<typeof launchBrowser>>;
 beforeAll(async () => { if (canLaunch) browser = await launchBrowser("chromium"); });

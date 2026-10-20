@@ -11,11 +11,9 @@ import { DiffPool } from "../../src/diff/pool";
 import { openDb, readComparisons } from "../../src/store/db";
 import { runFlow } from "../../src/pipeline/run-flow";
 import { ConfigSchema, type RawConfig } from "../../src/config/schema";
-import { isolated, launchable } from "../helpers/engines";
+import { launchable } from "../helpers/engines";
 
-// Isolated like determinism.integration.test.ts: it launches a browser and
-// serves deliberately slow responses (ADR-0036).
-const installed = isolated("flake") && await launchable("chromium");
+const installed = await launchable("chromium");
 const maybe = installed ? test : test.skip;
 const RUNS = 5;
 

@@ -167,7 +167,7 @@ None.
 
 ## Done when
 
-- [ ] Scenarios with the full step vocabulary work on all three engines (chromium and firefox verified; the WebKit tests are written and run via `bun run test:engines`, but haven't run yet on a host with WebKit's system libraries).
+- [x] Scenarios with the full step vocabulary work on all three engines (WebKit verified 2026-10-19 in the Playwright Linux image, where it can launch; on WSL it is skipped).
 - [x] Element capture works, and a missing element errors per target.
 - [x] Setup logs in once per side; a setup failure exits 2 with the side and
       failing step named.
@@ -193,6 +193,6 @@ None.
 - Prod logs in only when a baseline is captured; a frozen-baseline run never
   logs in to prod ([ADR-0011](../adr/0011-run-always-diffs-a-baseline.md),
   [ADR-0030](../adr/0030-setup-per-side.md)).
-- WebKit verification is outstanding: the WebKit tests are written and run via
-  `bun run test:engines`, but haven't run yet on a host with WebKit's system
-  libraries.
+- WebKit is verified: the steps and scenario tests pass on it in the Playwright
+  Linux image (2026-10-19). `bun run test` skips it where it can't launch, such
+  as on WSL; run the suite in that image to cover it.

@@ -303,14 +303,11 @@ testing behind the seams listed above.
   no browser.
 - **Browser-guarded tests** (`isBrowserInstalled() ? test : test.skip`) cover the
   handful of things that need a real page, like selector removal.
-- **Multi-engine tests** (steps, scenarios) loop over `TEST_ENGINES`. `bun run
-  test` runs them on chromium, then `test:engines` reruns them for firefox and
-  webkit, each in its own process ([ADR-0031](adr/0031-per-engine-test-processes.md)).
-  A new multi-engine file must be added to that script by hand.
-- **Isolated browser files** (the determinism tests and the RFC-0006 flake
-  benchmark) run only when `MOMUS_ISOLATED` names them; `bun run test` chains
-  `test:isolated`, one process per file. Sharing the suite's process, they left
-  a later `browser.close()` hanging ([ADR-0036](adr/0036-isolated-browser-test-files.md)).
+- **Multi-engine tests** (steps, scenarios) loop over `TEST_ENGINES`: every
+  engine, in the one test process, each skipped where it can't launch;
+  `MOMUS_ENGINE` narrows to one. That needs Bun 1.4.3 or later: 1.3.14
+  double-closed child-process descriptors, which broke browsers mid-test
+  ([ADR-0036](adr/0036-bun-1-4-3-one-test-process.md)).
 - **Integration** serves two tiny static sites from fixtures via `Bun.serve` and
   runs the real pipeline headless against them.
 

@@ -106,8 +106,8 @@ export async function scopeRequestHeaders(page: Page, url: string, headers?: Rec
  * `maxMs`. Needed after autoScroll: an image it triggered starts loading after
  * the page already reached networkidle, and Playwright's load states are
  * sticky, so waiting for networkidle again returns at once. The bound is
- * inside the page, so the evaluate always settles: one left pending on an
- * image that never loads made a later browser.close() hang under Bun. */
+ * inside the page, so the evaluate always settles rather than being left
+ * pending on an image that never loads. */
 export async function waitForImages(page: Page, maxMs: number): Promise<void> {
   if (maxMs <= 0) return;
   await page.evaluate((budget) => Promise.race([
