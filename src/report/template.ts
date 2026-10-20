@@ -3,6 +3,8 @@ import type { ComparisonRecord, Region } from "../types";
 import { summarize, itemClass, dimensionNote } from "./summary";
 import { STRICT_GATE, type GateOptions } from "../pipeline/verdict";
 import { embedImages, type ImageSide, type ImageSource } from "./images";
+import { STYLES } from "./styles";
+import { CLIENT_SCRIPT } from "./client";
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -29,23 +31,53 @@ function boxes(regions: Region[] | undefined, w: number | undefined, h: number |
     `<div class="${cls}" style="left:${pct(g.x, w)};top:${pct(g.y, h)};width:${pct(g.width, w)};height:${pct(g.height, h)}"></div>`).join("");
 }
 
+/** `width`/`height` are the capture's own size, so 1:1 is exact even while a
+ * thumbnail is showing. `--fw` is a narrower side's share of the padded width,
+ * so dev and prod stay registered when the overlay modes stack them. */
 function figure(images: ImageSource, r: ComparisonRecord, side: ImageSide, w?: number, h?: number): string {
-  return `<figure><figcaption>${side}</figcaption><div class="frame"><img src="${esc(images(r, side)?.src ?? "")}" alt="${side}">` +
+  const ref = images(r, side);
+  const full = ref?.full ? ` data-full="${esc(ref.full)}"` : "";
+  const size = w && h ? ` width="${w}" height="${h}"` : "";
+  const fw = r.width && w && w !== r.width ? ` style="--fw:${(w / r.width).toFixed(4)}"` : "";
+  return `<figure data-side="${side}"><figcaption>${side}</figcaption><div class="frame"${fw}>` +
+    `<img src="${esc(ref?.src ?? "")}"${full} alt="${side}"${size} loading="lazy" decoding="async">` +
     `${boxes(r.regions, w, h, "box")}${boxes(r.unstableRegions, w, h, "box unstable")}</div></figure>`;
+}
+
+const MODES = [["side", "Side by side"], ["slider", "Slider"], ["onion", "Onion skin"], ["highlight", "Highlight"]] as const;
+
+/** The mode toolbar is per item, but the mode itself is global: the client
+ * script keeps every toolbar in step with <main data-mode>. */
+function viewer(r: ComparisonRecord, figures: string): string {
+  const modes = MODES.map(([m, label]) =>
+    `<button type="button" data-mode="${m}" aria-pressed="${m === "side"}">${label}</button>`).join("");
+  const sw = r.width ? ` style="--sw:${r.width}px"` : "";
+  return `<div class="viewer" style="--mix:50">
+    <div class="modes" role="toolbar" aria-label="Comparison mode">${modes}` +
+    `<span class="mix-l">dev</span><input type="range" class="mix" min="0" max="100" value="50" aria-label="dev to prod"><span class="mix-r">prod</span>` +
+    `<button type="button" data-action="zoom" aria-pressed="false">1:1</button></div>
+    <div class="stage"><div class="triptych"${sw}>${figures}</div></div>
+  </div>`;
+}
+
+/** What the client script filters, groups and ranks by. */
+function opening(r: ComparisonRecord): string {
+  const cls = itemClass(r);
+  return `<details class="item ${cls}" data-status="${cls}" data-source="${esc(r.source ?? "pages")}" ` +
+    `data-viewport="${r.viewport}" data-target="${esc(r.targetId ?? r.path)}" data-label="${name(r)}" data-rank="${rank(r)}">`;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** One comparison as a collapsed accordion. */
 function item(r: ComparisonRecord, images: ImageSource): string {
-  const cls = itemClass(r);
   if (r.status === "error") {
     // A one-sided failure still shows the side that rendered (RFC-0006).
     const sides = [
       r.devImage ? figure(images, r, "dev", r.devWidth, r.devHeight) : "",
       r.prodImage ? figure(images, r, "prod", r.prodWidth, r.prodHeight) : "",
     ].join("");
-    return `<details class="item ${cls}">
+    return `${opening(r)}
   <summary><span class="badge err">ERROR</span> <span class="path">${name(r)}</span>${vp(r)}</summary>
   <div class="msg">${esc(r.error ?? "unknown error")}</div>${sides ? `\n  <div class="single">${sides}</div>` : ""}
 </details>`;
@@ -58,7 +90,7 @@ function item(r: ComparisonRecord, images: ImageSource): string {
     const body = img
       ? `<figure><figcaption>${caption}</figcaption><img src="${esc(img.src)}" alt="${r.status}"></figure>`
       : `<div class="msg">${esc(r.error ?? "no image captured")}</div>`;
-    return `<details class="item ${cls}">
+    return `${opening(r)}
   <summary>${badge} <span class="path">${name(r)}</span>${vp(r)}</summary>
   <div class="single">${body}</div>
 </details>`;
@@ -76,13 +108,10 @@ function item(r: ComparisonRecord, images: ImageSource): string {
         "Mask what moves with stabilize.mask, then re-capture the baseline."
       : "",
   ].filter(Boolean).map((n) => `\n  <div class="note">${n}</div>`).join("");
-  return `<details class="item ${cls}">
+  return `${opening(r)}
   <summary>${badge} <span class="path">${name(r)}</span>${vp(r)}${regions}${retries} <span class="score">${score}%</span></summary>${notes}
-  <div class="triptych">
-    ${figure(images, r, "dev", r.devWidth, r.devHeight)}
-    ${figure(images, r, "prod", r.prodWidth, r.prodHeight)}
-    ${figure(images, r, "diff", r.width, r.height)}
-  </div>
+  ${viewer(r, figure(images, r, "dev", r.devWidth, r.devHeight) +
+    figure(images, r, "prod", r.prodWidth, r.prodHeight) + figure(images, r, "diff", r.width, r.height))}
 </details>`;
 }
 
@@ -92,6 +121,33 @@ function rank(r: ComparisonRecord): number {
   if (r.status === "error") return Infinity;
   if (r.status === "added" || r.status === "removed" || r.status === "unstable") return 2;
   return r.diffScore ?? 0;
+}
+
+/** Triage order: what most needs a look first. */
+const STATUSES = [["fail", "Failed"], ["error", "Errored"], ["added", "Added"], ["removed", "Removed"],
+  ["unstable", "Unstable"], ["pass", "Passed"]] as const;
+
+/** A select only when there is something to choose between. */
+function select(key: string, all: string, values: string[]): string {
+  if (values.length < 2) return "";
+  return `<select data-filter="${key}"><option value="">${all}</option>` +
+    values.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("") + "</select>";
+}
+
+function filters(records: ComparisonRecord[], viewports: number[]): string {
+  const counts = new Map<string, number>();
+  for (const r of records) counts.set(itemClass(r), (counts.get(itemClass(r)) ?? 0) + 1);
+  const chips = STATUSES.filter(([st]) => counts.has(st)).map(([st, label]) =>
+    `<button type="button" data-status="${st}" aria-pressed="true">${label} <span class="n">${counts.get(st)}</span></button>`).join("");
+  const sources = [...new Set(records.map((r) => r.source ?? "pages"))].sort();
+  return `<nav class="filters" aria-label="Filters">
+    <span class="statuses">${chips}</span>
+    ${select("source", "All sources", sources)}${select("viewport", "All viewports", viewports.map(String))}
+    <input type="search" data-filter="path" placeholder="Filter by name ( / )" aria-label="Filter by name">
+    <button type="button" data-action="group" aria-pressed="false">Group by target</button>
+    <span class="shown"></span>
+  </nav>
+  <div class="keys">j / k next / previous · 1–4 or m mode · z 1:1 · g group · / search</div>`;
 }
 
 /** Only shown when present, so a pages-only report reads exactly as before. */
@@ -130,63 +186,9 @@ export function renderReport(
   ${meta.runId !== undefined ? `<div class="run">run #${meta.runId}${meta.startedAt ? ` · ${esc(meta.startedAt)}` : ""}${incomplete ? ` · ${esc(statusLabel ?? "")}` : ""}</div>` : ""}
   <div class="counts">${s.total} comparisons · ${s.passed} passed · ${s.failed} failed · ${s.errored} errored${changes(s)}</div>
   <div class="extras">${worst} · viewports: ${s.viewports.join(", ")}</div>
-  <div class="filter">
-    <button data-filter="all" class="active">All</button>
-    <button data-filter="passed">Passed</button>
-    <button data-filter="failed">Failed</button>
-  </div>
+  ${filters(records, s.viewports)}
 </header>
-<main data-filter="all">${items}</main>
-<script>${SCRIPT}</script>
+<main data-mode="side">${items}</main>
+<script>${CLIENT_SCRIPT}</script>
 </body></html>`;
 }
-
-const STYLES = `
-  body { font: 14px system-ui, sans-serif; margin: 0; background: #111; color: #eee; }
-  header { padding: 1rem 1.5rem; background: #000; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #333; }
-  header .verdict { font-size: 1.25rem; font-weight: 700; }
-  header.PASS .verdict { color: #3fb950; }
-  header.FAIL .verdict { color: #f85149; }
-  header .urls, header .run, header .counts, header .extras { color: #9aa0a6; margin-top: .25rem; }
-  .filter { margin-top: .6rem; display: inline-flex; border: 1px solid #444; border-radius: .35rem; overflow: hidden; }
-  .filter button { background: #1b1b1b; color: #ccc; border: 0; padding: .3rem .8rem; cursor: pointer; font: inherit; }
-  .filter button + button { border-left: 1px solid #444; }
-  .filter button.active { background: #2d6cdf; color: #fff; }
-  .item { border-bottom: 1px solid #333; }
-  .item > summary { cursor: pointer; padding: .7rem 1.5rem; display: flex; align-items: center; gap: .6rem; }
-  .item .path { font-weight: 600; }
-  .item .vp { color: #888; }
-  .item .score { color: #aaa; margin-left: auto; }
-  .badge { padding: .1rem .45rem; border-radius: .25rem; font-size: .72rem; font-weight: 700; }
-  .badge.pass { background: #164; color: #cffcd8; }
-  .badge.fail { background: #a22; color: #ffd9d9; }
-  .badge.err { background: #9a6a12; color: #ffe9c2; }
-  .badge.new { background: #1f4f8a; color: #d6e8ff; }
-  .badge.gone { background: #555; color: #eee; }
-  .badge.unstable { background: #5a3e8c; color: #eadcff; }
-  .item .regions, .item .retries { color: #aaa; font-size: .8rem; }
-  .note { color: #d8b4fe; padding: 0 1.5rem .5rem; }
-  .triptych { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem; padding: 0 1.5rem 1rem; }
-  .single { padding: 0 1.5rem 1rem; }
-  .single figure { max-width: 40rem; }
-  figure { margin: 0; }
-  figcaption { color: #888; font-size: .75rem; margin-bottom: .25rem; }
-  .frame { position: relative; display: inline-block; max-width: 100%; border: 1px solid #444; background: #fff; vertical-align: top; }
-  .frame img { display: block; max-width: 100%; }
-  .box { position: absolute; outline: 2px solid #ffd400; pointer-events: none; }
-  .box.unstable { outline: 2px dashed #3cf; }
-  .msg { color: #f99; padding: 0 1.5rem 1rem; }
-  main[data-filter="passed"] .item:not(.pass) { display: none; }
-  main[data-filter="failed"] .item.pass { display: none; }
-`;
-
-const SCRIPT = `
-  var main = document.querySelector('main');
-  var btns = document.querySelectorAll('.filter button');
-  btns.forEach(function (b) {
-    b.addEventListener('click', function () {
-      main.dataset.filter = b.dataset.filter;
-      btns.forEach(function (x) { x.classList.toggle('active', x === b); });
-    });
-  });
-`;

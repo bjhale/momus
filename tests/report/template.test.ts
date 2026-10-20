@@ -64,14 +64,62 @@ test("each comparison is a collapsed <details> with its status class", () => {
   expect(html).toContain('class="item error"');
 });
 
-test("has the All/Passed/Failed filter and an inline (no-src) script", () => {
+test("has an inline (no-src) script and starts side by side", () => {
   const html = renderReport(rows, { dev: "d", prod: "p" });
-  expect(html).toContain('data-filter="all"');
-  expect(html).toContain('data-filter="passed"');
-  expect(html).toContain('data-filter="failed"');
-  expect(html).toContain("<main data-filter=\"all\">");
+  expect(html).toContain('<main data-mode="side">');
   expect(html).toMatch(/<script>[\s\S]*<\/script>/);  // inline script present
   expect(html).not.toMatch(/<script\s+src=/i);        // and it has no src
+});
+
+// --- RFC-0007 ---
+
+test("filters list the statuses present, in triage order, with counts", () => {
+  const html = renderReport(rows, { dev: "d", prod: "p" });
+  const order = [...html.matchAll(/<button type="button" data-status="(\w+)" aria-pressed="true">/g)].map((m) => m[1]);
+  expect(order).toEqual(["fail", "error", "pass"]);
+  expect(html).toContain('data-status="fail" aria-pressed="true">Failed <span class="n">1</span></button>');
+  expect(html).toContain('<input type="search" data-filter="path"');
+  expect(html).toContain('<button type="button" data-action="group" aria-pressed="false">Group by target</button>');
+  expect(html).toContain('<span class="shown"></span>');
+});
+
+test("source and viewport selects appear only when there is a choice", () => {
+  const single = renderReport([rows[0]!], { dev: "d", prod: "p" });
+  expect(single).not.toContain('data-filter="source"');
+  expect(single).not.toContain('data-filter="viewport"');
+  const html = renderReport([...rows, { ...rows[0]!, source: "scenarios", viewport: 375 }], { dev: "d", prod: "p" });
+  expect(html).toContain('<select data-filter="source"><option value="">All sources</option><option value="pages">pages</option><option value="scenarios">scenarios</option></select>');
+  expect(html).toContain('<select data-filter="viewport"><option value="">All viewports</option><option value="375">375</option><option value="1280">1280</option></select>');
+});
+
+test("every item carries its filter data, escaped", () => {
+  const html = renderReport([{ ...rows[0]!, targetId: "t&1", label: 'a"<b' }, rows[2]!], { dev: "d", prod: "p" });
+  expect(html).toContain('<details class="item fail" data-status="fail" data-source="pages" data-viewport="1280" data-target="t&amp;1" data-label="a&quot;&lt;b" data-rank="0.2">');
+  expect(html).toContain('data-target="/broken" data-label="/broken" data-rank="Infinity">');
+});
+
+test("compared rows get the mode toolbar and range; error and added rows don't", () => {
+  const html = renderReport([rows[0]!], { dev: "d", prod: "p" });
+  for (const m of ["side", "slider", "onion", "highlight"]) expect(html).toContain(`<button type="button" data-mode="${m}"`);
+  expect(html).toContain('<input type="range" class="mix" min="0" max="100" value="50"');
+  expect(html).toContain('<button type="button" data-action="zoom" aria-pressed="false">1:1</button>');
+  expect(html).toContain('<div class="triptych" style="--sw:1280px">');
+  const others = renderReport([rows[2]!, ...changed], { dev: "d", prod: "p" });
+  expect(others).not.toContain('class="viewer"');
+});
+
+test("images carry their size and, in thumbnails mode, the original", () => {
+  const html = renderReport([{ ...rows[0]!, devWidth: 1280, devHeight: 2000 }], { dev: "d", prod: "p" },
+    undefined, { images: () => ({ src: "t.png", full: "f.png" }) });
+  expect(html).toContain('<img src="t.png" data-full="f.png" alt="dev" width="1280" height="2000" loading="lazy" decoding="async">');
+  expect(html).toContain('<img src="t.png" data-full="f.png" alt="prod" loading="lazy" decoding="async">'); // size unknown
+  expect(html).toContain('<figure data-side="diff">');
+});
+
+test("a narrower side gets its share of the stack width", () => {
+  const html = renderReport([{ ...rows[0]!, devWidth: 640, devHeight: 2000, prodWidth: 1280, prodHeight: 2000 }], { dev: "d", prod: "p" });
+  expect(html).toContain('<div class="frame" style="--fw:0.5000">');
+  expect(html.match(/--fw:/g)!.length).toBe(1);
 });
 
 test("all-error report: FAIL verdict and worst: n/a", () => {
