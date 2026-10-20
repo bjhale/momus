@@ -121,14 +121,14 @@ export const ConfigSchema = z.object({
         enabled: z.boolean().default(true), // an object means you opted in
         startPath: z.string().default("/"),
         maxDepth: z.number().int().positive().default(3),
-      }),
+      }).strict(),
     ]).default(false).transform((v) =>
       typeof v === "boolean"
         ? { enabled: v, startPath: "/", maxDepth: 3 }
         : v),
     include: z.array(z.string()).default(["/**"]),
     exclude: z.array(z.string()).default([]),
-  }).default({}),
+  }).strict().default({}),
   viewports: z.array(z.number().int().positive()).default([375, 768, 1280]),
   stabilize: z.object({
     waitUntil: z.enum(["load", "domcontentloaded", "networkidle"]).default("networkidle"),
@@ -146,7 +146,7 @@ export const ConfigSchema = z.object({
     colorScheme: z.enum(["light", "dark", "no-preference"]).default("light"),
     // Opt-in: it doubles the cost of every baseline capture (RFC-0006).
     verify: z.boolean().default(false),
-  }).default({}),
+  }).strict().default({}),
   diff: z.object({
     threshold: z.number().min(0).max(1).default(0.1),
     // false = pixelmatch's anti-aliasing detection is on: AA pixels don't count.
@@ -155,17 +155,17 @@ export const ConfigSchema = z.object({
     overrides: z.array(z.object({
       path: z.string(),
       failScore: z.number().min(0).max(1),
-    })).default([]),
+    }).strict()).default([]),
     // Added/removed targets fail the gate unless allowed (RFC-0001, ADR-0022).
     allowAdded: z.boolean().default(false),
     allowRemoved: z.boolean().default(false),
-  }).default({}),
+  }).strict().default({}),
   // Re-capture dev up to N times when a target fails the gate (ADR-0034).
   retries: z.number().int().min(0).max(10).default(0),
   concurrency: z.object({
     screenshots: z.number().int().positive().default(6),
     diffWorkers: z.number().int().positive().default(4),
-  }).default({}),
+  }).strict().default({}),
   output: z.object({
     report: z.string().default("momus-report.html"),
     db: z.string().default("momus.sqlite"),
@@ -175,7 +175,7 @@ export const ConfigSchema = z.object({
     // Where the report's images live (RFC-0007): inline (one self-contained
     // file), beside it, or inline previews with the originals beside it.
     reportImages: z.enum(["embed", "link", "thumbnails"]).default("embed"),
-  }).default({}),
+  }).strict().default({}),
   scenarios: z.array(ScenarioSchema).default([]).superRefine((list, ctx) => {
     const seen = new Set<string>();
     list.forEach((s, i) => {
@@ -184,7 +184,9 @@ export const ConfigSchema = z.object({
     });
   }),
   setup: SetupSchema.optional(),
-}).superRefine((c, ctx) => {
+// Every object is strict: a typo'd key fails with a suggestion rather than
+// being ignored (RFC-0009, ADR-0040).
+}).strict().superRefine((c, ctx) => {
   // Jobs are scenario viewports ∩ top-level viewports; a scenario sharing no
   // width with the top level would silently produce zero jobs.
   c.scenarios.forEach((s, i) => {

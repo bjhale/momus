@@ -54,10 +54,10 @@ test("crawl object opts in and applies overrides; enabled:false still disables",
   expect(disabled.discovery.crawl.enabled).toBe(false);
 });
 
-test("legacy crawl.maxPages is ignored without error", () => {
-  const c = ConfigSchema.parse({ dev: "https://d.com", prod: "https://p.com", discovery: { crawl: { maxPages: 999 } as any } });
-  expect(c.discovery.crawl).toEqual({ enabled: true, startPath: "/", maxDepth: 3 });
-  expect((c.discovery.crawl as any).maxPages).toBeUndefined();
+test("legacy crawl.maxPages is an error that says where it moved (ADR-0040)", async () => {
+  const { resolveConfig } = await import("../../src/config/load");
+  expect(() => resolveConfig({ dev: "https://d.com", prod: "https://p.com", discovery: { crawl: { maxPages: 999 } as any } }, {}))
+    .toThrow("discovery.crawl.maxPages: unknown key; it moved to discovery.maxPages");
 });
 
 test("discovery.urlList is optional and passes through", () => {

@@ -98,3 +98,34 @@ test("--report-images beats output.reportImages, and an unknown mode is a config
   expect(resolveConfig({ ...base, output: { reportImages: "link" } }, {}).output.reportImages).toBe("link");
   expect(() => resolveConfig(base, { reportImages: "big" })).toThrow(/^output\.reportImages: /);
 });
+
+// --- RFC-0009: unknown config keys are rejected (ADR-0040) ---
+
+const bad = (extra: Record<string, unknown>) => () => resolveConfig({ ...base, ...extra } as never, {});
+
+test("an unknown top-level key fails with a suggestion", () => {
+  expect(bad({ viewport: [375] })).toThrow('viewport: unknown key; did you mean "viewports"?');
+});
+
+test("unknown nested keys name their full path and suggest", () => {
+  expect(bad({ stabilize: { maks: [] } })).toThrow('stabilize.maks: unknown key; did you mean "mask"?');
+  expect(bad({ discovery: { crawl: { maxdepth: 2 } } })).toThrow('discovery.crawl.maxdepth: unknown key; did you mean "maxDepth"?');
+  expect(bad({ diff: { overrides: [{ path: "/a", failscore: 0.1 }] } }))
+    .toThrow('diff.overrides.0.failscore: unknown key; did you mean "failScore"?');
+  expect(bad({ scenarios: [{ id: "a", path: "/", stepz: [] }] })).toThrow('scenarios.0.stepz: unknown key; did you mean "steps"?');
+  expect(bad({ output: { reportImage: "link" } })).toThrow('output.reportImage: unknown key; did you mean "reportImages"?');
+});
+
+test("nothing close: no suggestion", () => {
+  expect(bad({ zzzzzz: 1 })).toThrow(/^zzzzzz: unknown key$/m);
+});
+
+test("a resolved config re-parses under strict", async () => {
+  const { applyDefaults } = await import("../../src/config/schema");
+  const full = resolveConfig({
+    ...base, discovery: { crawl: { maxDepth: 2 } },
+    setup: { dev: { storageState: "d.json" }, prod: { storageState: "p.json" } },
+    scenarios: [{ id: "a", path: "/", steps: [{ click: "#m" }] }],
+  }, {});
+  expect(() => applyDefaults(full)).not.toThrow();
+});

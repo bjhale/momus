@@ -1,5 +1,7 @@
 // src/config/load.ts
+import type { ZodIssue } from "zod";
 import { ConfigSchema, type RawConfig, type ResolvedConfig } from "./schema";
+import { knownKeys, suggest } from "./suggest";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
@@ -51,12 +53,35 @@ export function resolveConfig(fileConfig: RawConfig, cli: CliOverrides): Resolve
     merged.diff = { ...(merged.diff ?? {}), allowRemoved: cli.allowRemoved };
   }
   const parsed = ConfigSchema.safeParse(merged);
-  // One `path: message` line per issue: commands print this after "Config
-  // error:", and ZodError's own message is a JSON dump of every issue.
-  if (!parsed.success) {
-    throw new Error(parsed.error.issues.map((i) => `${i.path.join(".") || "(config)"}: ${i.message}`).join("\n"));
-  }
+  if (!parsed.success) throw new Error(formatIssues(parsed.error.issues).join("\n"));
   return parsed.data;
+}
+
+/** One `path: message` line per issue: commands print this after "Config
+ * error:", and ZodError's own message is a JSON dump of every issue. */
+// Keys that moved, so the error says where rather than guessing a sibling.
+const MOVED: Record<string, string> = { "discovery.crawl.maxPages": "discovery.maxPages" };
+
+function formatIssues(issues: ZodIssue[]): string[] {
+  return issues.flatMap((i): string[] => {
+    // `crawl: true | {...}`: a typo inside the object fails the whole union.
+    // Report the branches that got past "wrong type" (the object's own
+    // issues), not "invalid input".
+    if (i.code === "invalid_union") {
+      const inner = i.unionErrors.flatMap((e) => e.issues).filter((u) => u.code !== "invalid_type" || u.path.length > i.path.length);
+      if (inner.length) return formatIssues(inner);
+    }
+    if (i.code === "unrecognized_keys") {
+      const known = knownKeys(ConfigSchema, i.path);
+      return i.keys.map((k) => {
+        const at = [...i.path, k].join(".");
+        if (MOVED[at]) return `${at}: unknown key; it moved to ${MOVED[at]}`;
+        const hint = suggest(k, known);
+        return `${at}: unknown key${hint ? `; did you mean "${hint}"?` : ""}`;
+      });
+    }
+    return [`${i.path.join(".") || "(config)"}: ${i.message}`];
+  });
 }
 
 /** Locate and import a config file, returning the raw (unvalidated) object.
