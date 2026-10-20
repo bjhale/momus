@@ -2,11 +2,7 @@
 import type { ComparisonRecord, Region } from "../types";
 import { summarize, itemClass, dimensionNote } from "./summary";
 import { STRICT_GATE, type GateOptions } from "../pipeline/verdict";
-
-function b64(bytes?: Uint8Array): string {
-  if (!bytes) return "";
-  return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
-}
+import { embedImages, type ImageSide, type ImageSource } from "./images";
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -33,21 +29,21 @@ function boxes(regions: Region[] | undefined, w: number | undefined, h: number |
     `<div class="${cls}" style="left:${pct(g.x, w)};top:${pct(g.y, h)};width:${pct(g.width, w)};height:${pct(g.height, h)}"></div>`).join("");
 }
 
-function figure(r: ComparisonRecord, caption: string, img: Uint8Array | undefined, w?: number, h?: number): string {
-  return `<figure><figcaption>${caption}</figcaption><div class="frame"><img src="${b64(img)}" alt="${caption}">` +
+function figure(images: ImageSource, r: ComparisonRecord, side: ImageSide, w?: number, h?: number): string {
+  return `<figure><figcaption>${side}</figcaption><div class="frame"><img src="${esc(images(r, side)?.src ?? "")}" alt="${side}">` +
     `${boxes(r.regions, w, h, "box")}${boxes(r.unstableRegions, w, h, "box unstable")}</div></figure>`;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** One comparison as a collapsed accordion. */
-function item(r: ComparisonRecord): string {
+function item(r: ComparisonRecord, images: ImageSource): string {
   const cls = itemClass(r);
   if (r.status === "error") {
     // A one-sided failure still shows the side that rendered (RFC-0006).
     const sides = [
-      r.devImage ? figure(r, "dev", r.devImage, r.devWidth, r.devHeight) : "",
-      r.prodImage ? figure(r, "prod", r.prodImage, r.prodWidth, r.prodHeight) : "",
+      r.devImage ? figure(images, r, "dev", r.devWidth, r.devHeight) : "",
+      r.prodImage ? figure(images, r, "prod", r.prodWidth, r.prodHeight) : "",
     ].join("");
     return `<details class="item ${cls}">
   <summary><span class="badge err">ERROR</span> <span class="path">${name(r)}</span>${vp(r)}</summary>
@@ -57,10 +53,10 @@ function item(r: ComparisonRecord): string {
   if (r.status === "added" || r.status === "removed") {
     // Only one side exists, so there is nothing to diff: show that side alone.
     const [badge, caption, img] = r.status === "added"
-      ? [`<span class="badge new">ADDED</span>`, "dev (not in the baseline)", r.devImage]
-      : [`<span class="badge gone">REMOVED</span>`, "baseline (no longer listed)", r.prodImage];
+      ? [`<span class="badge new">ADDED</span>`, "dev (not in the baseline)", images(r, "dev")]
+      : [`<span class="badge gone">REMOVED</span>`, "baseline (no longer listed)", images(r, "prod")];
     const body = img
-      ? `<figure><figcaption>${caption}</figcaption><img src="${b64(img)}" alt="${r.status}"></figure>`
+      ? `<figure><figcaption>${caption}</figcaption><img src="${esc(img.src)}" alt="${r.status}"></figure>`
       : `<div class="msg">${esc(r.error ?? "no image captured")}</div>`;
     return `<details class="item ${cls}">
   <summary>${badge} <span class="path">${name(r)}</span>${vp(r)}</summary>
@@ -83,9 +79,9 @@ function item(r: ComparisonRecord): string {
   return `<details class="item ${cls}">
   <summary>${badge} <span class="path">${name(r)}</span>${vp(r)}${regions}${retries} <span class="score">${score}%</span></summary>${notes}
   <div class="triptych">
-    ${figure(r, "dev", r.devImage, r.devWidth, r.devHeight)}
-    ${figure(r, "prod", r.prodImage, r.prodWidth, r.prodHeight)}
-    ${figure(r, "diff", r.diffImage, r.width, r.height)}
+    ${figure(images, r, "dev", r.devWidth, r.devHeight)}
+    ${figure(images, r, "prod", r.prodWidth, r.prodHeight)}
+    ${figure(images, r, "diff", r.width, r.height)}
   </div>
 </details>`;
 }
@@ -108,7 +104,9 @@ export function renderReport(
   records: ComparisonRecord[],
   meta: { dev: string; prod: string; runId?: number; startedAt?: string; status?: string },
   gate: GateOptions = STRICT_GATE,
+  opts: { images?: ImageSource } = {},
 ): string {
+  const images = opts.images ?? embedImages;
   const sorted = [...records].sort((a, b) => rank(b) - rank(a));
   const s = summarize(records, gate);
   // A run that never completed (failed before comparing, or killed) has rows
@@ -117,7 +115,7 @@ export function renderReport(
   const incomplete = meta.status !== undefined && meta.status !== "complete";
   if (incomplete) s.verdict = "FAIL";
   const statusLabel = meta.status === "running" ? "incomplete" : meta.status;
-  const items = sorted.map(item).join("\n");
+  const items = sorted.map((r) => item(r, images)).join("\n");
   const worst = s.worst
     ? `worst: ${esc(s.worst.path)} @${s.worst.viewport} (${s.worst.pct}%)`
     : "worst: n/a";

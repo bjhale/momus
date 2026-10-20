@@ -2,10 +2,12 @@
 import type { Database } from "bun:sqlite";
 import { readComparisons, readRun, type ComparisonRow } from "../store/db";
 import { renderReport } from "./template";
+import { prepareImages, type ReportImages } from "./images";
 
 /** Render one stored run. The gate comes from the run row, so an old run
  * re-renders with the verdict it had, whatever today's config says. */
-export async function writeReport(db: Database, runId: number, outPath: string, rows?: ComparisonRow[]): Promise<void> {
+export async function writeReport(db: Database, runId: number, outPath: string, rows?: ComparisonRow[],
+  images: ReportImages = "embed"): Promise<void> {
   const run = readRun(db, runId);
   if (!run) throw new Error(`run ${runId} not found`);
   // Accept pre-read rows so callers who already have them (e.g. for the exit
@@ -15,6 +17,7 @@ export async function writeReport(db: Database, runId: number, outPath: string, 
     rows,
     { dev: run.devBaseUrl, prod: run.prodBaseUrl, runId: run.id, startedAt: run.startedAt, status: run.status },
     { allowAdded: run.allowAdded, allowRemoved: run.allowRemoved },
+    { images: await prepareImages(rows, images, outPath) },
   );
   await Bun.write(outPath, html); // overwrites (spec §6)
 }
