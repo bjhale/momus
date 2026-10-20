@@ -72,3 +72,12 @@ test("a re-render removes stale images but keeps other files", () => inTmp(async
   await prepareImages([row()], "link", out);
   expect(readdirSync(imagesDir(out)).sort()).toEqual(["0001-dev.png", "0001-diff.png", "0001-prod.png", "notes.txt"]);
 }));
+
+test("an image that won't decode falls back to its link instead of aborting the report", () => inTmp(async (dir) => {
+  const out = join(dir, "r.html");
+  const rows = [row({ devImage: new Uint8Array([1, 2, 3]), prodImage: new Uint8Array() })];
+  const src = await prepareImages(rows, "thumbnails", out);
+  expect(src(rows[0]!, "dev")).toEqual({ src: "r-images/0001-dev.png" });
+  expect(src(rows[0]!, "prod")).toEqual({ src: "r-images/0001-prod.png" });
+  expect(src(rows[0]!, "diff")!.src).toStartWith("data:image/webp;base64,");
+}));

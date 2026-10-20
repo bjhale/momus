@@ -263,3 +263,11 @@ test("the counts line omits unstable when there is none", () => {
   expect(one({})).not.toContain("unstable</div>");
   expect(one({})).not.toContain(">UNSTABLE<");
 });
+
+test("single images link their original in thumbnails mode", () => {
+  const images = () => ({ src: "t.png", full: "f.png" });
+  const html = renderReport([...changed, { path: "/x", viewport: 375, devUrl: "d", prodUrl: "p", status: "error",
+    error: "prod: HTTP 404", devImage: new Uint8Array([9]) }], { dev: "d", prod: "p" }, undefined, { images });
+  expect(html.match(/<a href="f\.png" target="_blank" rel="noopener"><img src="t\.png"/g)!.length).toBe(3);
+  expect(renderReport(changed, { dev: "d", prod: "p" })).not.toContain("<a href=");
+});

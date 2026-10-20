@@ -88,8 +88,10 @@ The report isn't a stable format; its HTML can change in any release.
 
 - [x] Slider, onion skin, highlight and zoom work on Chromium, Firefox and
       WebKit-based browsers. (The browser tests loop over all three; WebKit
-      skips on hosts where it can't launch, such as WSL.)
+      skips on hosts where it can't launch, such as WSL, and was run in the
+      Docker image.)
 - [x] Keyboard triage and filters work without a mouse.
-- [x] `--report-images` modes work; a 500-target report in `thumbnails` mode
-      opens in under 2 s.
+- [ ] `--report-images` modes work; a 500-target report in `thumbnails` mode
+      opens in under 2 s. (Chromium ~0.7 s and Firefox ~1 s; Playwright's
+      WebKit ~4.5 s, bound by parsing ~150 MB of HTML.)
 - [x] An ADR supersedes ADR-0017.

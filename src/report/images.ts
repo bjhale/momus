@@ -50,7 +50,14 @@ export async function prepareImages(records: ComparisonRecord[], mode: ReportIma
       const file = `${String(i + 1).padStart(4, "0")}-${side}.png`;
       await Bun.write(join(dir, file), b);
       const linked = `${rel}/${file}`;
-      entry[side] = mode === "link" ? { src: linked } : { src: dataUri(await thumbnail(b), "webp"), full: linked };
+      if (mode === "link") { entry[side] = { src: linked }; return; }
+      // One image that won't decode must not cost the whole report (ADR-0006):
+      // that side shows the linked original, as in link mode.
+      try {
+        entry[side] = { src: dataUri(await thumbnail(b), "webp"), full: linked };
+      } catch {
+        entry[side] = { src: linked };
+      }
     }));
     refs.set(r, entry);
   }

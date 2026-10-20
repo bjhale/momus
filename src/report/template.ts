@@ -2,7 +2,7 @@
 import type { ComparisonRecord, Region } from "../types";
 import { summarize, itemClass, dimensionNote } from "./summary";
 import { STRICT_GATE, type GateOptions } from "../pipeline/verdict";
-import { embedImages, type ImageSide, type ImageSource } from "./images";
+import { embedImages, type ImageRef, type ImageSide, type ImageSource } from "./images";
 import { STYLES } from "./styles";
 import { CLIENT_SCRIPT } from "./client";
 
@@ -34,14 +34,21 @@ function boxes(regions: Region[] | undefined, w: number | undefined, h: number |
 /** `width`/`height` are the capture's own size, so 1:1 is exact even while a
  * thumbnail is showing. `--fw` is a narrower side's share of the padded width,
  * so dev and prod stay registered when the overlay modes stack them. */
-function figure(images: ImageSource, r: ComparisonRecord, side: ImageSide, w?: number, h?: number): string {
+function figure(images: ImageSource, r: ComparisonRecord, side: ImageSide, w?: number, h?: number, single = false): string {
   const ref = images(r, side);
-  const full = ref?.full ? ` data-full="${esc(ref.full)}"` : "";
+  // In a viewer, 1:1 swaps the original in; a lone image has no viewer, so it links it.
+  const full = ref?.full && !single ? ` data-full="${esc(ref.full)}"` : "";
   const size = w && h ? ` width="${w}" height="${h}"` : "";
   const fw = r.width && w && w !== r.width ? ` style="--fw:${(w / r.width).toFixed(4)}"` : "";
+  const img = `<img src="${esc(ref?.src ?? "")}"${full} alt="${side}"${size} loading="lazy" decoding="async">`;
   return `<figure data-side="${side}"><figcaption>${side}</figcaption><div class="frame"${fw}>` +
-    `<img src="${esc(ref?.src ?? "")}"${full} alt="${side}"${size} loading="lazy" decoding="async">` +
+    (single ? linkFull(img, ref) : img) +
     `${boxes(r.regions, w, h, "box")}${boxes(r.unstableRegions, w, h, "box unstable")}</div></figure>`;
+}
+
+/** Thumbnails mode: the preview opens the original. */
+function linkFull(img: string, ref: ImageRef | undefined): string {
+  return ref?.full ? `<a href="${esc(ref.full)}" target="_blank" rel="noopener">${img}</a>` : img;
 }
 
 const MODES = [["side", "Side by side"], ["slider", "Slider"], ["onion", "Onion skin"], ["highlight", "Highlight"]] as const;
@@ -74,8 +81,8 @@ function item(r: ComparisonRecord, images: ImageSource): string {
   if (r.status === "error") {
     // A one-sided failure still shows the side that rendered (RFC-0006).
     const sides = [
-      r.devImage ? figure(images, r, "dev", r.devWidth, r.devHeight) : "",
-      r.prodImage ? figure(images, r, "prod", r.prodWidth, r.prodHeight) : "",
+      r.devImage ? figure(images, r, "dev", r.devWidth, r.devHeight, true) : "",
+      r.prodImage ? figure(images, r, "prod", r.prodWidth, r.prodHeight, true) : "",
     ].join("");
     return `${opening(r)}
   <summary><span class="badge err">ERROR</span> <span class="path">${name(r)}</span>${vp(r)}</summary>
@@ -88,7 +95,7 @@ function item(r: ComparisonRecord, images: ImageSource): string {
       ? [`<span class="badge new">ADDED</span>`, "dev (not in the baseline)", images(r, "dev")]
       : [`<span class="badge gone">REMOVED</span>`, "baseline (no longer listed)", images(r, "prod")];
     const body = img
-      ? `<figure><figcaption>${caption}</figcaption><img src="${esc(img.src)}" alt="${r.status}"></figure>`
+      ? `<figure><figcaption>${caption}</figcaption>${linkFull(`<img src="${esc(img.src)}" alt="${r.status}">`, img)}</figure>`
       : `<div class="msg">${esc(r.error ?? "no image captured")}</div>`;
     return `${opening(r)}
   <summary>${badge} <span class="path">${name(r)}</span>${vp(r)}</summary>
