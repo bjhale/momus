@@ -15,7 +15,7 @@ export type ImageSource = (r: ComparisonRecord, side: ImageSide) => ImageRef | u
 const SIDES: ImageSide[] = ["dev", "prod", "diff"];
 const bytes = (r: ComparisonRecord, side: ImageSide) =>
   side === "dev" ? r.devImage : side === "prod" ? r.prodImage : r.diffImage;
-const dataUri = (b: Uint8Array) => `data:image/png;base64,${Buffer.from(b).toString("base64")}`;
+const dataUri = (b: Uint8Array, type = "png") => `data:image/${type};base64,${Buffer.from(b).toString("base64")}`;
 
 export const embedImages: ImageSource = (r, side) => {
   const b = bytes(r, side);
@@ -43,14 +43,15 @@ export async function prepareImages(records: ComparisonRecord[], mode: ReportIma
   const refs = new Map<ComparisonRecord, Partial<Record<ImageSide, ImageRef>>>();
   for (const [i, r] of records.entries()) {
     const entry: Partial<Record<ImageSide, ImageRef>> = {};
-    for (const side of SIDES) {
+    // A row's three sides at once: thumbnails encode on Bun.Image's worker thread.
+    await Promise.all(SIDES.map(async (side) => {
       const b = bytes(r, side);
-      if (!b) continue;
+      if (!b) return;
       const file = `${String(i + 1).padStart(4, "0")}-${side}.png`;
       await Bun.write(join(dir, file), b);
       const linked = `${rel}/${file}`;
-      entry[side] = mode === "link" ? { src: linked } : { src: dataUri(thumbnail(b)), full: linked };
-    }
+      entry[side] = mode === "link" ? { src: linked } : { src: dataUri(await thumbnail(b), "webp"), full: linked };
+    }));
     refs.set(r, entry);
   }
   return (r, side) => refs.get(r)?.[side];

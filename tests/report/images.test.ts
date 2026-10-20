@@ -51,8 +51,8 @@ test("thumbnails embeds previews and links originals", () => inTmp(async (dir) =
   const big = png(1280, 100);
   const rows = [row({ devImage: big })];
   const ref = (await prepareImages(rows, "thumbnails", out))(rows[0]!, "dev")!;
-  expect(ref.src).toStartWith("data:image/png;base64,");
-  expect(PNG.sync.read(Buffer.from(ref.src.split(",")[1]!, "base64")).width).toBe(400);
+  expect(ref.src).toStartWith("data:image/webp;base64,");
+  expect((await new Bun.Image(Buffer.from(ref.src.split(",")[1]!, "base64")).metadata()).width).toBe(400);
   expect(ref.full).toBe("r-images/0001-dev.png");
   expect(readFileSync(join(imagesDir(out), "0001-dev.png")).equals(Buffer.from(big))).toBe(true);
 }));
