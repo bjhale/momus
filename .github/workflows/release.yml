@@ -14,11 +14,12 @@ permissions:
   contents: write # required to create the GitHub release
 
 jobs:
-  # Gate the release on a clean type-check. If this fails, nothing is published.
-  # The test suite is deliberately not run here: its browser-guarded tests were
-  # flaky on shared runners (cold Chromium launches timing out). Run
-  # `bun run test` locally before tagging. The Docker build still launches each
-  # browser engine, so an image without working browsers fails to publish.
+  # Gate the release on a clean type-check and test run. If either fails,
+  # nothing is published. No browser is installed here, so the browser-guarded
+  # tests skip (they were flaky on shared runners); everything else runs,
+  # including the DB compatibility fixtures. Run the full suite locally (or in
+  # the image) before tagging. The Docker build still launches each browser
+  # engine, so an image without working browsers fails to publish.
   check:
     runs-on: ubuntu-latest
     outputs:
@@ -36,6 +37,8 @@ jobs:
         run: test "v$(jq -r .version package.json)" = "$GITHUB_REF_NAME"
       - name: Type-check
         run: bunx tsc --noEmit
+      - name: Test
+        run: bun run test
       # SemVer puts the pre-release identifier after a hyphen that follows the
       # version core. Matching the core, not just any hyphen, keeps a hyphen in
       # build metadata (v1.0.0+build-7) from marking a stable release.
