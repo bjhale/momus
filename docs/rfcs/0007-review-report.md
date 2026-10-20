@@ -1,6 +1,6 @@
 # RFC-0007: Review report v2
 
-**Status:** Draft · **Milestone:** M6 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** M6 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -22,9 +22,17 @@ makes subtle shifts hard to spot.
 
 ## Proposal
 
+### JavaScript
+
+The report requires JavaScript. Every mode below needs it, and a no-JavaScript
+fallback would mean building and testing each view twice. It stays one
+self-contained file: the script is inline, and there are still no external
+references. This supersedes
+[ADR-0017](../adr/0017-report-self-contained-mostly-js-free.md).
+
 ### Comparison modes
 
-- **Side by side:** today's view, kept as the no-JavaScript fallback.
+- **Side by side:** today's view, and the default mode.
 - **Slider:** drag a divider across dev and prod overlaid.
 - **Onion skin:** fade the opacity between dev and prod.
 - **Highlight:** dev with the change regions outlined
@@ -55,6 +63,9 @@ Downscaling is for *display* only; diffs are never computed on scaled images
 - A served or live report. Serving is the 2.0 server's review UI
   ([RFC-0010](0010-server.md)).
 - Comments or discussion threads.
+- Trends across runs. A report shows one run; `momus report --run ID` already
+  renders any stored one. History per target is the server's review UI
+  ([RFC-0010](0010-server.md)).
 - Approving or rejecting changes. Approval moves to the 2.0 server
   ([ADR-0028](../adr/0028-approval-belongs-to-the-server.md)); the report's triage is its read-only precursor.
 
@@ -64,11 +75,14 @@ The report isn't a stable format; its HTML can change in any release.
 
 ## Open questions
 
-- ADR-0017 kept the report mostly free of JavaScript. Every mode above needs
+- ~~ADR-0017 kept the report mostly free of JavaScript. Every mode above needs
   JavaScript. Is the fallback "triptych without JavaScript, everything else
-  progressive enhancement," or is it time to supersede ADR-0017?
-- Should the report embed one run, or optionally show a trend across the last N
-  runs from history ([RFC-0002](0002-storage-and-run-history.md))?
+  progressive enhancement," or is it time to supersede ADR-0017?~~ Resolved on
+  2026-10-19: supersede it. The report requires JavaScript, and still has no
+  external references. See JavaScript.
+- ~~Should the report embed one run, or optionally show a trend across the last
+  N runs from history ([RFC-0002](0002-storage-and-run-history.md))?~~ Resolved
+  on 2026-10-19: one run. Trends belong to the server. See Non-goals.
 
 ## Done when
 
@@ -77,4 +91,4 @@ The report isn't a stable format; its HTML can change in any release.
 - [ ] Keyboard triage and filters work without a mouse.
 - [ ] `--report-images` modes work; a 500-target report in `thumbnails` mode
       opens in under 2 s.
-- [ ] An ADR supersedes or amends ADR-0017.
+- [ ] An ADR supersedes ADR-0017.
