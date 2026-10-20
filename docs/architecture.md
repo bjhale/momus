@@ -170,7 +170,11 @@ src/
 │   └── db.ts           # open + typed read/write helpers, run pruning
 ├── report/
 │   ├── summary.ts      # derive counts/verdict/worst from records
-│   ├── template.ts     # renderReport(rows, meta) → HTML string (pure)
+│   ├── template.ts     # renderReport(rows, meta, gate, { images }) → HTML string (pure)
+│   ├── styles.ts       # the inline stylesheet; comparison modes are CSS layouts
+│   ├── client.ts       # the inline script: modes, zoom, keys, filters, grouping
+│   ├── images.ts       # embed | link | thumbnails → an ImageSource; writes linked files
+│   ├── thumbnail.ts    # WebP previews via Bun.Image (display only)
 │   └── report.ts       # read DB → write file
 ├── glob.ts             # matchPath(path, pattern) — one predicate for all globs
 ├── version.ts          # MOMUS_VERSION from package.json, recorded on every run
@@ -231,7 +235,7 @@ built-in defaults**.
 | `concurrency` | `screenshots` (the `--concurrency` flag maps here) and `diffWorkers` (config only). |
 | `scenarios` | Targets with `steps` and an optional `capture.element` / `viewports`. Gated per target ([ADR-0029](adr/0029-scenarios-and-step-order.md)). |
 | `setup` | One login per side: shared or `{ dev, prod }`, each `steps` or `storageState`. Prod's is gated, redacted ([ADR-0030](adr/0030-setup-per-side.md)). |
-| `output` | `report` path, `db` path, `keepRuns` (default 5; 0 = unlimited). One DB per site is the intended shape. |
+| `output` | `report` path, `db` path, `keepRuns` (default 5; 0 = unlimited), `reportImages` (`embed` \| `link` \| `thumbnails`, default `embed`; `--report-images`). One DB per site is the intended shape. |
 
 ### Discovery order
 
@@ -311,8 +315,10 @@ testing behind the seams listed above.
 - **Integration** serves two tiny static sites from fixtures via `Bun.serve` and
   runs the real pipeline headless against them.
 
-The report's interactive filter is verified manually; the unit tests assert the
-buttons, `data-filter` attributes, status classes, and inline script are wired.
+The report's markup is unit-tested through `renderReport`. Its behavior (modes,
+zoom, keys, filters, grouping) runs in real browsers over `TEST_ENGINES`, and a
+500-target `thumbnails` report must open in under 2 s
+([ADR-0037](adr/0037-report-requires-javascript.md)).
 
 ## Packaging
 

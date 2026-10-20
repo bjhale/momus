@@ -1,6 +1,6 @@
 # RFC-0007: Review report v2
 
-**Status:** Accepted · **Milestone:** M6 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M6 · **Created:** 2026-10-16 · **ADRs:** [0037](../adr/0037-report-requires-javascript.md)
 
 ## Summary
 
@@ -86,9 +86,10 @@ The report isn't a stable format; its HTML can change in any release.
 
 ## Done when
 
-- [ ] Slider, onion skin, highlight and zoom work on Chromium, Firefox and
-      WebKit-based browsers.
-- [ ] Keyboard triage and filters work without a mouse.
-- [ ] `--report-images` modes work; a 500-target report in `thumbnails` mode
+- [x] Slider, onion skin, highlight and zoom work on Chromium, Firefox and
+      WebKit-based browsers. (The browser tests loop over all three; WebKit
+      skips on hosts where it can't launch, such as WSL.)
+- [x] Keyboard triage and filters work without a mouse.
+- [x] `--report-images` modes work; a 500-target report in `thumbnails` mode
       opens in under 2 s.
-- [ ] An ADR supersedes ADR-0017.
+- [x] An ADR supersedes ADR-0017.

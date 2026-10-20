@@ -3,7 +3,8 @@
 Visual regression diffing for websites. momus captures full-page screenshots of
 two deployments of the same site (typically a **dev** build and a **prod**
 baseline), compares each page pixel-by-pixel, and produces a single
-self-contained HTML report with side-by-side **dev | prod | diff** triptychs,
+self-contained HTML report for reviewing the differences: **dev | prod | diff**
+side by side, a slider, onion skin, and change highlights, with keyboard triage,
 per-page diff scores, and a pass/fail gate — worst pages first.
 
 Pages to compare are discovered automatically from the prod site (via
@@ -43,7 +44,8 @@ docker run --rm -v "$PWD:/work" bjhale/momus run --config momus.config.ts
 
 Open the generated `momus-report.html` in any browser — it is fully
 self-contained (images are embedded), so it can be committed as a CI artifact or
-emailed as-is. No `install-browser` step is needed: the browser engines are in the image.
+emailed as-is. For a large site, `--report-images thumbnails` keeps it small
+(see `output.reportImages`). No `install-browser` step is needed: the browser engines are in the image.
 
 To capture prod once and compare several dev builds against it:
 
@@ -131,6 +133,7 @@ exits 2 without saving a baseline.
 | `--snapshot` | Re-capture the prod baseline before diffing, even when `output.db` already holds one (ignores the freeze). Equivalent to running `momus snapshot` first, in a single invocation. |
 | `--allow-added` | Don't fail the run for targets that are new since the baseline (`diff.allowAdded`). They are still reported. |
 | `--allow-removed` | Don't fail the run for baseline targets that are no longer listed (`diff.allowRemoved`). They are still reported. |
+| `--report-images MODE` | `embed`, `link` or `thumbnails`; overrides `output.reportImages`. |
 | `--commit SHA` | Record the commit this run tested. Stored on the run; no effect on the result. |
 | `--branch NAME` | Record the branch this run tested. |
 | `--pr N` | Record the pull request this run tested. |
@@ -157,6 +160,7 @@ and `output.report`), so the config must validate, dev and prod URLs included.
 | --- | --- |
 | `--run ID` | Render this run instead of the latest. Run ids are never reused. |
 | `--out FILE` | Override the report output path (default `momus-report.html`). |
+| `--report-images MODE` | `embed`, `link` or `thumbnails`; overrides `output.reportImages`. |
 | `--config FILE` | Path to the config file (default `./momus.config.ts`); used for `output.db` and `output.report`. |
 
 Exits `0` on success and `2` if there is no DB file, no runs, or no run with that
@@ -214,7 +218,7 @@ export default defineConfig({
 
   concurrency: { screenshots: 6, diffWorkers: 4 },
 
-  output: { report: "momus-report.html", db: "momus.sqlite", keepRuns: 5 },  // keepRuns: 0 = keep all
+  output: { report: "momus-report.html", db: "momus.sqlite", keepRuns: 5, reportImages: "embed" },  // keepRuns: 0 = keep all
 
   // Pages in a particular state, and logging in. See "Scenarios" and "Setup" below.
   scenarios: [{ id: "nav-open", path: "/", steps: [{ click: "button[aria-label=Menu]" }] }],
@@ -299,6 +303,12 @@ Notes:
   unlimited). Each run stores its own dev, prod and diff images, so the file
   grows with this number; the oldest runs are pruned and their space reclaimed
   after every run. Lower it if you commit the file.
+- **`output.reportImages`** is where the report's images go. `embed` (default)
+  inlines them: one file you can send anywhere, but heavy for a large site.
+  `link` writes the PNGs to `<report name>-images/` beside the report.
+  `thumbnails` inlines small WebP previews and links the originals, which the
+  1:1 view loads. With `link` or `thumbnails`, keep the directory with the
+  report. Previews are for display only; diffs always use the full captures.
 - **`requestHeaders`** is an optional map of headers sent on every request — both
   the discovery fetches and the browser page loads — to reach sites behind an
   auth proxy. For example, to get through **Cloudflare Access** with a service
@@ -478,11 +488,15 @@ header. That shows up as a diff. Use `mask` for it.
 3. **Diff** — compare the two PNGs in a pool of worker threads (pixelmatch),
    producing a diff image and a diff score.
 4. **Gate** — mark each page pass/fail against `failScore` (or a path override).
-5. **Report** — write a self-contained `momus-report.html`: a summary header
-   (pass/fail verdict, counts, worst page, viewports) with an All/Passed/Failed
-   filter, and each comparison as a collapsible accordion (page, width, change %,
-   pass/fail) that expands to the `dev | prod | diff` screenshots — worst pages
-   first. Changed areas are clustered into regions ("3 regions") and outlined
+5. **Report** — write `momus-report.html`: a summary header (pass/fail
+   verdict, counts, worst page, viewports) with filters by status, source,
+   viewport and name, and each comparison as a collapsible accordion (page,
+   width, change %, pass/fail) — worst pages first. An open comparison shows
+   `dev | prod | diff` side by side, or a **slider** across dev and prod, an
+   **onion skin** fading between them, or dev alone with its changes
+   **highlighted**; **1:1** shows real pixels and drag pans. Keys: `j`/`k` next
+   and previous, `1`–`4` or `m` mode, `z` 1:1, `g` group a target's viewports
+   together, `/` search. The report needs JavaScript, all of it inline. Changed areas are clustered into regions ("3 regions") and outlined
    on all three images. A page whose dev and prod sizes differ says so ("dev is
    40 px taller than prod"), and the band only one side covers is drawn magenta
    in the diff. A capture that failed on one side still shows the side that

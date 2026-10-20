@@ -28,7 +28,7 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0014](0014-urllist-normalized-to-paths.md) | `urlList` entries normalize to paths; off-base URLs are a hard error | 2026-07-05 |
 | [0015](0015-remove-vs-mask.md) | `stabilize.remove` deletes from the DOM; `mask` only hides | 2026-07-05 |
 | [0016](0016-insecure-tls-flag.md) | One `insecure` flag covering both network surfaces | 2026-07-05 |
-| [0017](0017-report-self-contained-mostly-js-free.md) | Self-contained report, accordions without JS | 2026-07-05 |
+| [0017](0017-report-self-contained-mostly-js-free.md) | Self-contained report, accordions without JS (superseded by 0037) | 2026-07-05 |
 | [0018](0018-progress-behind-a-seam.md) | Progress bars behind a three-method seam, rendered to stderr | 2026-07-05 |
 | [0019](0019-selectable-browser-engine.md) | Selectable browser engine, gated against the baseline | 2026-07-10 |
 | [0020](0020-run-snapshot-flag.md) | `momus run --snapshot` re-captures the baseline in one invocation | 2026-08-18 |
@@ -48,6 +48,7 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0034](0034-unstable-and-retries.md) | An unstable baseline image never fails the gate; `retries` re-captures dev only | 2026-10-18 |
 | [0035](0035-change-regions-and-the-pad-band.md) | Change regions are grid-clustered boxes; the pad band is magenta and counts as a region | 2026-10-18 |
 | [0036](0036-bun-1-4-3-one-test-process.md) | Bun 1.4.3, because 1.3.14 double-closes child-process descriptors; browser tests share one process | 2026-10-19 |
+| [0037](0037-report-requires-javascript.md) | The report requires JavaScript; images can be linked or previewed as WebP thumbnails | 2026-10-19 |
 
 ## Open questions
 
