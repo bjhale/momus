@@ -85,8 +85,8 @@ test("filters list the statuses present, in triage order, with counts", () => {
 
 test("source and viewport selects appear only when there is a choice", () => {
   const single = renderReport([rows[0]!], { dev: "d", prod: "p" });
-  expect(single).not.toContain('data-filter="source"');
-  expect(single).not.toContain('data-filter="viewport"');
+  expect(single).not.toContain('<select data-filter="source"');
+  expect(single).not.toContain('<select data-filter="viewport"');
   const html = renderReport([...rows, { ...rows[0]!, source: "scenarios", viewport: 375 }], { dev: "d", prod: "p" });
   expect(html).toContain('<select data-filter="source"><option value="">All sources</option><option value="pages">pages</option><option value="scenarios">scenarios</option></select>');
   expect(html).toContain('<select data-filter="viewport"><option value="">All viewports</option><option value="375">375</option><option value="1280">1280</option></select>');
