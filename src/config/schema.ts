@@ -9,7 +9,9 @@ const stepVerbs = {
   click: selector,
   hover: selector,
   // An unset Bun.env value arrives as undefined; say so rather than "Required".
-  fill: z.tuple([selector, z.string({ required_error: "fill value is undefined — is the environment variable set?" })]),
+  fill: z.tuple([selector, z.string({
+    error: (iss) => iss.input === undefined ? "fill value is undefined — is the environment variable set?" : undefined,
+  })]),
   // A bare key presses on the page; [selector, key] presses on that element.
   press: z.union([z.string().min(1), z.tuple([selector, z.string().min(1)])]),
   select: z.tuple([selector, z.string()]),
@@ -31,7 +33,7 @@ function oneKeyStep<V extends Record<string, z.ZodTypeAny>>(verbs: V) {
   const names = Object.keys(verbs);
   return z.unknown().transform((step, ctx) => {
     const fail = (message: string) => {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      ctx.addIssue({ code: "custom", message });
       return z.NEVER;
     };
     if (typeof step !== "object" || step === null || Array.isArray(step)) {
@@ -44,12 +46,12 @@ function oneKeyStep<V extends Record<string, z.ZodTypeAny>>(verbs: V) {
     const parsed = verbs[verb]!.safeParse((step as Record<string, unknown>)[verb]);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [verb, ...issue.path], message: issue.message });
+        ctx.addIssue({ code: "custom", path: [verb, ...issue.path], message: issue.message });
       }
       return z.NEVER;
     }
     return { [verb]: parsed.data } as OneKey<V, "output">;
-  }) as unknown as z.ZodType<OneKey<V, "output">, z.ZodTypeDef, OneKey<V, "input">>;
+  }) as unknown as z.ZodType<OneKey<V, "output">, OneKey<V, "input">>;
 }
 
 export const StepSchema = oneKeyStep(stepVerbs);
@@ -93,7 +95,7 @@ const SetupSchema = z.object({
   dev: SideSetupSchema.optional(),
   prod: SideSetupSchema.optional(),
 }).strict().superRefine((s, ctx) => {
-  const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  const issue = (message: string) => ctx.addIssue({ code: "custom", message });
   const shared = s.steps !== undefined || s.storageState !== undefined;
   const perSide = s.dev !== undefined || s.prod !== undefined;
   if (shared && perSide) issue("setup: use a shared setup (steps or storageState) or per-side dev and prod, not both");
@@ -105,6 +107,8 @@ const SetupSchema = z.object({
   return { dev: side, prod: side };
 });
 
+// Sections use .prefault({}), not .default({}): Zod 4 returns a default as-is,
+// so a missing section would come back as {} without its fields' defaults.
 export const ConfigSchema = z.object({
   dev: z.string().url(),
   prod: z.string().url(),
@@ -128,7 +132,7 @@ export const ConfigSchema = z.object({
         : v),
     include: z.array(z.string()).default(["/**"]),
     exclude: z.array(z.string()).default([]),
-  }).strict().default({}),
+  }).strict().prefault({}),
   viewports: z.array(z.number().int().positive()).default([375, 768, 1280]),
   stabilize: z.object({
     waitUntil: z.enum(["load", "domcontentloaded", "networkidle"]).default("networkidle"),
@@ -146,7 +150,7 @@ export const ConfigSchema = z.object({
     colorScheme: z.enum(["light", "dark", "no-preference"]).default("light"),
     // Opt-in: it doubles the cost of every baseline capture (RFC-0006).
     verify: z.boolean().default(false),
-  }).strict().default({}),
+  }).strict().prefault({}),
   diff: z.object({
     threshold: z.number().min(0).max(1).default(0.1),
     // false = pixelmatch's anti-aliasing detection is on: AA pixels don't count.
@@ -159,13 +163,13 @@ export const ConfigSchema = z.object({
     // Added/removed targets fail the gate unless allowed (RFC-0001, ADR-0022).
     allowAdded: z.boolean().default(false),
     allowRemoved: z.boolean().default(false),
-  }).strict().default({}),
+  }).strict().prefault({}),
   // Re-capture dev up to N times when a target fails the gate (ADR-0034).
   retries: z.number().int().min(0).max(10).default(0),
   concurrency: z.object({
     screenshots: z.number().int().positive().default(6),
     diffWorkers: z.number().int().positive().default(4),
-  }).strict().default({}),
+  }).strict().prefault({}),
   output: z.object({
     report: z.string().default("momus-report.html"),
     db: z.string().default("momus.sqlite"),
@@ -175,11 +179,11 @@ export const ConfigSchema = z.object({
     // Where the report's images live (RFC-0007): inline (one self-contained
     // file), beside it, or inline previews with the originals beside it.
     reportImages: z.enum(["embed", "link", "thumbnails"]).default("embed"),
-  }).strict().default({}),
+  }).strict().prefault({}),
   scenarios: z.array(ScenarioSchema).default([]).superRefine((list, ctx) => {
     const seen = new Set<string>();
     list.forEach((s, i) => {
-      if (seen.has(s.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, "id"], message: `duplicate scenario id "${s.id}"` });
+      if (seen.has(s.id)) ctx.addIssue({ code: "custom", path: [i, "id"], message: `duplicate scenario id "${s.id}"` });
       seen.add(s.id);
     });
   }),
@@ -192,7 +196,7 @@ export const ConfigSchema = z.object({
   c.scenarios.forEach((s, i) => {
     const stray = (s.viewports ?? []).filter((w) => !c.viewports.includes(w)).sort((a, b) => a - b);
     if (stray.length > 0) ctx.addIssue({
-      code: z.ZodIssueCode.custom, path: ["scenarios", i, "viewports"],
+      code: "custom", path: ["scenarios", i, "viewports"],
       message: `scenario "${s.id}" viewports ${stray.join(", ")} are not in the top-level viewports (${c.viewports.join(", ")})`,
     });
   });

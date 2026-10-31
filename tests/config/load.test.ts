@@ -87,7 +87,7 @@ test("config errors are readable lines, one per issue, not ZodError JSON", () =>
     message = (err as Error).message;
   }
   expect(message.split("\n")).toEqual([
-    "viewports.0: Number must be greater than 0",
+    "viewports.0: Too small: expected number to be >0",
     "setup.steps.1.fill.1: fill value is undefined — is the environment variable set?",
   ]);
 });

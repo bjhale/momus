@@ -6,6 +6,18 @@ All notable changes to momus. The format follows
 may change anything ([docs/stability.md](docs/stability.md)). Every release
 lists a `Deprecated` section, even when it is empty.
 
+## [Unreleased]
+
+### Changed
+
+- Zod 4 validates the config. Messages for out-of-range or wrongly typed values
+  read differently, e.g. `viewports.0: Too small: expected number to be >0`.
+  A wrong value inside `discovery.crawl` is now reported at the field itself.
+
+### Deprecated
+
+- Nothing.
+
 ## [v1.0.0]
 
 ### Added
@@ -90,5 +102,6 @@ lists a `Deprecated` section, even when it is empty.
 See the [GitHub releases](https://github.com/bjhale/momus/releases) for 0.1.0
 through 0.9.4, whose notes were generated from commit messages.
 
-[Unreleased]: https://github.com/bjhale/momus/compare/v0.9.4...HEAD
+[Unreleased]: https://github.com/bjhale/momus/compare/v1.0.0...HEAD
+[v1.0.0]: https://github.com/bjhale/momus/releases/tag/v1.0.0
 [0.9.4]: https://github.com/bjhale/momus/releases/tag/v0.9.4

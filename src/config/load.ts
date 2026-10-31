@@ -64,23 +64,26 @@ const MOVED: Record<string, string> = { "discovery.crawl.maxPages": "discovery.m
 
 function formatIssues(issues: ZodIssue[]): string[] {
   return issues.flatMap((i): string[] => {
-    // `crawl: true | {...}`: a typo inside the object fails the whole union.
-    // Report the branches that got past "wrong type" (the object's own
-    // issues), not "invalid input".
+    // Config paths are never symbols; Zod's type allows them.
+    const path = i.path as (string | number)[];
+    // `crawl: true | {...}`: a wrong value inside the object fails the whole
+    // union. Report the branches that got past "wrong type" (the object's own
+    // issues), not "invalid input". Their paths are relative to the union.
     if (i.code === "invalid_union") {
-      const inner = i.unionErrors.flatMap((e) => e.issues).filter((u) => u.code !== "invalid_type" || u.path.length > i.path.length);
+      const inner = i.errors.flat().filter((u) => u.code !== "invalid_type" || u.path.length > 0)
+        .map((u) => ({ ...u, path: [...path, ...u.path] }) as ZodIssue);
       if (inner.length) return formatIssues(inner);
     }
     if (i.code === "unrecognized_keys") {
-      const known = knownKeys(ConfigSchema, i.path);
+      const known = knownKeys(ConfigSchema, path);
       return i.keys.map((k) => {
-        const at = [...i.path, k].join(".");
+        const at = [...path, k].join(".");
         if (MOVED[at]) return `${at}: unknown key; it moved to ${MOVED[at]}`;
         const hint = suggest(k, known);
         return `${at}: unknown key${hint ? `; did you mean "${hint}"?` : ""}`;
       });
     }
-    return [`${i.path.join(".") || "(config)"}: ${i.message}`];
+    return [`${path.join(".") || "(config)"}: ${i.message}`];
   });
 }
 

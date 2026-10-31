@@ -27,34 +27,35 @@ export function suggest(key: string, known: readonly string[]): string | undefin
   return bestD <= limit && bestD < key.length ? best : undefined;
 }
 
-/** Strip the wrappers that don't change which keys an object takes. */
-function unwrap(s: z.ZodTypeAny): z.ZodTypeAny {
+/** Strip the wrappers that don't change which keys an object takes. A refine
+ * adds no wrapper; a transform is a pipe whose input side holds the keys. */
+function unwrap(s: z.ZodType): z.ZodType {
   for (;;) {
-    if (s instanceof z.ZodDefault) s = s._def.innerType;
-    else if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) s = s.unwrap();
-    else if (s instanceof z.ZodEffects) s = s.innerType();
+    if (s instanceof z.ZodDefault || s instanceof z.ZodPrefault ||
+      s instanceof z.ZodOptional || s instanceof z.ZodNullable) s = s.unwrap() as z.ZodType;
+    else if (s instanceof z.ZodPipe) s = s.in as z.ZodType;
     else return s;
   }
 }
 
-function objects(s: z.ZodTypeAny): z.AnyZodObject[] {
+function objects(s: z.ZodType): z.ZodObject[] {
   const u = unwrap(s);
   if (u instanceof z.ZodObject) return [u];
-  if (u instanceof z.ZodUnion) return (u.options as z.ZodTypeAny[]).flatMap(objects);
+  if (u instanceof z.ZodUnion) return (u.options as z.ZodType[]).flatMap(objects);
   return [];
 }
 
 /** The keys the object at `path` in `schema` accepts, as Zod paths spell it
  * (array indices included). Empty when the path isn't an object. */
-export function knownKeys(schema: z.ZodTypeAny, path: ReadonlyArray<string | number>): string[] {
-  let level: z.ZodTypeAny[] = [schema];
+export function knownKeys(schema: z.ZodType, path: ReadonlyArray<string | number>): string[] {
+  let level: z.ZodType[] = [schema];
   for (const seg of path) {
     level = level.flatMap((s) => {
       if (typeof seg === "number") {
         const u = unwrap(s);
-        return u instanceof z.ZodArray ? [u.element as z.ZodTypeAny] : [];
+        return u instanceof z.ZodArray ? [u.element as z.ZodType] : [];
       }
-      return objects(s).flatMap((o) => (Object.hasOwn(o.shape, seg) ? [o.shape[seg] as z.ZodTypeAny] : []));
+      return objects(s).flatMap((o) => (Object.hasOwn(o.shape, seg) ? [o.shape[seg] as z.ZodType] : []));
     });
   }
   return [...new Set(level.flatMap(objects).flatMap((o) => Object.keys(o.shape)))];
