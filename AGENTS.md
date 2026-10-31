@@ -28,6 +28,7 @@ bunx tsc --noEmit                    # typecheck
 bun run src/cli.ts <command>         # run momus from source (or: bun momus)
 bun run src/cli.ts install-browser   # needed once before browser-guarded tests
 bun run build:dev                    # docker build -t momus-dev .
+just build                           # typecheck + test, then the same docker build
 ```
 
 Run **both** `bun run test` and `bunx tsc --noEmit` before claiming work is done.

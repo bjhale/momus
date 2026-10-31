@@ -21,6 +21,7 @@ To build the image locally:
 
 ```bash
 bun run build:dev    # docker build -t momus-dev .
+just build           # typecheck and test first, then the same image
 ```
 
 ## Tests
