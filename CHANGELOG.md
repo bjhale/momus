@@ -6,7 +6,7 @@ All notable changes to momus. The format follows
 may change anything ([docs/stability.md](docs/stability.md)). Every release
 lists a `Deprecated` section, even when it is empty.
 
-## [Unreleased]
+## [v1.0.0]
 
 ### Added
 
