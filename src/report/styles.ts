@@ -48,6 +48,8 @@ export const STYLES = `
   .single figure { max-width: 40rem; }
   figure { margin: 0; }
   figcaption { color: #888; font-size: .75rem; margin-bottom: .25rem; }
+  figcaption a { color: inherit; text-decoration: underline; }
+  figcaption a:hover { color: #ccc; }
   .frame { position: relative; display: inline-block; max-width: 100%; border: 1px solid #444; background: #fff; vertical-align: top; }
   .frame img { display: block; max-width: 100%; height: auto; -webkit-user-drag: none; user-select: none; }
   .box { position: absolute; outline: 2px solid #ffd400; pointer-events: none; }

@@ -245,8 +245,18 @@ test("an error row shows whichever side rendered", () => {
   const html = renderReport([{ path: "/x", viewport: 375, devUrl: "d", prodUrl: "p", status: "error",
     error: "prod: HTTP 404", devImage: new Uint8Array([9]) }], { dev: "d", prod: "p" });
   expect(html).toContain("prod: HTTP 404");
-  expect(html).toContain("<figcaption>dev</figcaption>");
-  expect(html).not.toContain("<figcaption>prod</figcaption>");
+  expect(html).toContain('<figure data-side="dev">');
+  expect(html).not.toContain('<figure data-side="prod">');
+});
+
+test("dev and prod captions link the live page; diff and URL-less sides don't", () => {
+  const html = one({ devUrl: "https://dev/a", prodUrl: "https://prod/a" });
+  expect(html).toContain(`<figcaption><a href="https://dev/a" target="_blank" rel="noopener">dev</a></figcaption>`);
+  expect(html).toContain(`<figcaption><a href="https://prod/a" target="_blank" rel="noopener">prod</a></figcaption>`);
+  expect(html).toContain("<figcaption>diff</figcaption>");
+  const noUrl = renderReport([{ path: "/x", viewport: 375, devUrl: "", prodUrl: "", status: "error",
+    error: "boom", devImage: new Uint8Array([9]) }], { dev: "d", prod: "p" });
+  expect(noUrl).toContain("<figcaption>dev</figcaption>");
 });
 
 test("an unstable row has its own badge, a mask hint, dashed boxes, and doesn't fail the run", () => {
