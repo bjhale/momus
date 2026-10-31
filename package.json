@@ -1,6 +1,6 @@
 {
   "name": "momus",
-  "version": "1.0.0-rc2",
+  "version": "1.0.0-rc3",
   "module": "src/cli.ts",
   "type": "module",
   "bin": {
