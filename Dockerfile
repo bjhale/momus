@@ -18,7 +18,7 @@ FROM mcr.microsoft.com/playwright:v1.62.1-resolute
 
 # Bun runtime (matches the version momus was built and tested against). Copied
 # from the official image so it tracks the target arch under buildx.
-COPY --from=oven/bun:1.3.14 /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.3 /usr/local/bin/bun /usr/local/bin/bun
 
 # Install dependencies. Bun does not run lifecycle scripts by default, so
 # Playwright's browser-download postinstall does NOT fire — we intentionally use
@@ -36,6 +36,12 @@ RUN bun x playwright install firefox webkit
 RUN bun -e 'import { chromium, firefox, webkit } from "playwright"; for (const t of [chromium, firefox, webkit]) { const b = await t.launch(); await b.close(); console.log("ok:", t.name()); }'
 COPY tsconfig.json ./
 COPY src ./src
+
+# This image is the reference rendering environment (RFC-0006, ADR-0033):
+# Chromium launches with its host-dependent rendering pinned, and baselines
+# captured here are marked "pinned", so the gate refuses to diff them against
+# captures made anywhere else, and the reverse.
+ENV MOMUS_RENDERING=pinned
 
 # Users mount their project here (config in, report/db out):
 #   docker run --rm -v "$PWD:/work" <image> run --config momus.config.ts

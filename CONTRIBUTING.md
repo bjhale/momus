@@ -21,12 +21,13 @@ To build the image locally:
 
 ```bash
 bun run build:dev    # docker build -t momus-dev .
+just build           # typecheck and test first, then the same image
 ```
 
 ## Tests
 
 ```bash
-bun run test         # the whole suite (with the CI timeout)
+bun run test         # the whole suite, every browser engine, with the CI timeout (needs Bun >= 1.4.3)
 bunx tsc --noEmit    # typecheck
 ```
 
@@ -90,16 +91,34 @@ read its RFC and settle its open questions.
 ## Releasing
 
 Releases are cut by pushing a version tag. The
-[`release` workflow](.github/workflows/release.yml) type-checks, then in
-parallel:
+[`release` workflow](.github/workflows/release.yml) type-checks and runs the
+tests, then in parallel:
 
 - **GitHub release** — creates a release for the tag with auto-generated notes
   (a changelog; no binary assets — momus ships as the Docker image).
 - **Docker image** — builds on native `amd64` and `arm64` runners and pushes a
   multi-arch tag to Docker Hub (`:<version>` and `:latest`).
 
-CI does not run the test suite (its browser tests were flaky on shared
-runners), so run it yourself before tagging:
+CI (the [`test` workflow](.github/workflows/test.yml) on every push, and the
+release gate) runs the suite without browsers, so the browser-guarded tests
+skip there. Run the full suite yourself before tagging.
+
+Before tagging:
+
+1. **Changelog.** Move [CHANGELOG.md](CHANGELOG.md)'s `Unreleased` entries under
+   the new version and date. Every release has a `Deprecated` section, even if
+   it says "Nothing." A release that changes the browser engine version says
+   so under `Changed`: it forces every user to re-capture their baseline
+   ([ADR-0038](docs/adr/0038-engine-version-in-the-gate.md)).
+2. **Version.** Bump `version` in `package.json` and commit it. Every run
+   records that version, and the release workflow refuses a tag that doesn't
+   match it.
+3. **Compatibility fixture** (each 1.x minor release, from 1.0.0 on). Capture a
+   DB with the released build and check it in as
+   `tests/fixtures/db/vX.Y.0.sqlite` with its `vX.Y.0.config.json`; see
+   [tests/fixtures/db/README.md](tests/fixtures/db/README.md). CI diffs every
+   fixture on every push, which is how a later release keeps its promise to
+   open baselines from earlier ones ([RFC-0009](docs/rfcs/0009-stability-contract.md)).
 
 ```bash
 bun run test && bunx tsc --noEmit
@@ -108,6 +127,13 @@ git push origin v0.1.0   # triggers the release workflow
 ```
 
 The tag name becomes the release name and the image version.
+
+**Pre-releases.** A tag with a SemVer pre-release identifier — a hyphen after
+the version core, as in `v1.0.0-rc.1` or `v0.9.0-beta.2` — is published as a
+GitHub pre-release, and its image is pushed as `:1.0.0-rc.1` only; `:latest`
+stays on the newest stable release. The `package.json` version must carry the
+same identifier (`"version": "1.0.0-rc.1"`). Build metadata alone
+(`v1.0.0+build.7`) is not a pre-release.
 
 **Required repository secrets** (Settings → Secrets and variables → Actions) for
 the Docker publish:

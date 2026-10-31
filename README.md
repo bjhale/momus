@@ -3,7 +3,8 @@
 Visual regression diffing for websites. momus captures full-page screenshots of
 two deployments of the same site (typically a **dev** build and a **prod**
 baseline), compares each page pixel-by-pixel, and produces a single
-self-contained HTML report with side-by-side **dev | prod | diff** triptychs,
+self-contained HTML report for reviewing the differences: **dev | prod | diff**
+side by side, a slider, onion skin, and change highlights, with keyboard triage,
 per-page diff scores, and a pass/fail gate — worst pages first.
 
 Pages to compare are discovered automatically from the prod site (via
@@ -43,7 +44,9 @@ docker run --rm -v "$PWD:/work" bjhale/momus run --config momus.config.ts
 
 Open the generated `momus-report.html` in any browser — it is fully
 self-contained (images are embedded), so it can be committed as a CI artifact or
-emailed as-is. No `install-browser` step is needed: the browser engines are in the image.
+emailed as-is. For a large site, `--report-images thumbnails` keeps it small
+(see [`output.reportImages`](docs/config.md#output)). No `install-browser` step
+is needed: the browser engines are in the image.
 
 To capture prod once and compare several dev builds against it:
 
@@ -54,204 +57,70 @@ docker run --rm -v "$PWD:/work" bjhale/momus snapshot --config momus.config.ts
 docker run --rm -v "$PWD:/work" bjhale/momus run --dev https://dev-pr-123.example.com
 ```
 
-## Commands
-
-### `momus init`
-
-Writes a starter `momus.config.ts` in the current directory. Fails if one
-already exists.
-
-### `momus install-browser`
-
-Downloads the browser engines momus captures with (Chromium, Firefox, WebKit).
-
-### `momus snapshot [flags]`
-
-Captures the **prod** baseline once into `output.db` (default `momus.sqlite`):
-discovers pages from prod, screenshots each at every viewport, and stores the
-prod images plus the capture context (viewports + stabilize settings). Reuse it
-across many `momus run` invocations without re-screenshotting prod.
-Running `momus snapshot` again replaces the baseline — it is how you refresh the
-frozen prod capture that `momus run` reuses.
-
-| Flag | Description |
-| --- | --- |
-| `--config FILE` | Path to the config file (default `./momus.config.ts`). |
-| `--prod URL` | Override the config's `prod` base URL. |
-| `--concurrency N` | Override the number of concurrent screenshots. |
-| `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
-| `--crawl` | Force same-origin crawl discovery on. |
-| `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
-| `--browser NAME` | Engine to capture with (`chromium`\|`firefox`\|`webkit`); overrides `browser`. |
-
-The baseline lives in its own tables inside `output.db`; the single SQLite file
-is the portable artifact — commit it or pass it as a CI artifact.
-
-### `momus run [flags]`
-
-Runs the pipeline against the configured `dev` build, always diffing dev against
-a stored **prod baseline**:
-
-- **No baseline yet** (fresh `output.db`): `momus run` captures the prod baseline
-  as its first step — discovering pages and screenshotting prod — then diffs dev
-  against it and writes the report, all in one invocation.
-- **Baseline present**: `momus run` reuses it and captures **dev only** — prod is
-  **not** re-screenshotted (it is frozen). The run **fails fast (exit 2)** if the
-  live config's `viewports` or `stabilize` settings differ from the baseline's.
-
-Because prod is frozen after the first run, repeated `momus run` invocations diff
-against the same prod baseline; only the `runs`/`comparisons` tables are refreshed
-each run. To re-capture prod, run `momus snapshot` (which replaces the baseline),
-or pass `momus run --snapshot` to do that re-capture and the diff in a single
-invocation.
-
-| Flag | Description |
-| --- | --- |
-| `--config FILE` | Path to the config file (default `./momus.config.ts`). |
-| `--dev URL` | Override the config's `dev` base URL. |
-| `--prod URL` | Override the config's `prod` base URL. |
-| `--out FILE` | Override the report output path (default `momus-report.html`). |
-| `--concurrency N` | Override the number of concurrent screenshots. |
-| `--max-pages N` | Override the max pages to compare (`discovery.maxPages`; `0` = unlimited). |
-| `--crawl` | Force same-origin crawl discovery on. |
-| `--insecure` | Ignore invalid/self-signed TLS certs for discovery fetches and page loads (`insecure`). |
-| `--browser NAME` | Engine to capture with (`chromium`\|`firefox`\|`webkit`); overrides `browser`. |
-| `--snapshot` | Re-capture the prod baseline before diffing, even when `output.db` already holds one (ignores the freeze). Equivalent to running `momus snapshot` first, in a single invocation. |
-
-CLI flags win over config-file values.
-
-On completion `momus run` prints, for example:
-
-```text
-Wrote momus-report.html (12 comparisons). Exit 0.
-```
-
 ## Configuration
 
-`momus init` scaffolds a fully-typed `momus.config.ts`. The scaffold imports
-`defineConfig` from `momus` for editor types, but a plain object works too — the
-config is validated with Zod either way, and every field has a sensible default.
+Only `dev` and `prod` are required; every other setting has a default:
 
 ```ts
 import { defineConfig } from "momus";
 
 export default defineConfig({
-  dev: "https://dev.example.com",   // the build under test
-  prod: "https://www.example.com",  // the baseline; also the discovery source
-  insecure: false,                  // set true to ignore invalid/self-signed TLS certs (dev only)
-  browser: "chromium",              // engine: "chromium" | "firefox" | "webkit"
-
-  discovery: {
-    // urlList: "urls.txt",                                  // optional: newline-delimited full URLs or paths
-    sitemap: true,                                            // read /sitemap.xml
-    maxPages: 500,                                            // cap total pages (0 = unlimited)
-    crawl: false,                                             // false | true | { startPath, maxDepth }
-    include: ["/**"],                                         // path globs to keep
-    exclude: ["/admin/**"],                                   // path globs to drop
-  },
-
-  viewports: [375, 768, 1280],                                // widths in px
-
-  stabilize: {
-    waitUntil: "networkidle",   // navigation wait strategy
-    settleMs: 500,              // extra settle delay after load
-    timeoutMs: 15000,           // per-page capture budget
-    disableAnimations: true,    // freeze CSS animations/transitions
-    mask: [".carousel", ".ad-slot", "[data-timestamp]"],  // hide dynamic regions
-    remove: [".cookie-banner"],                           // delete elements (space collapses)
-  },
-
-  diff: {
-    threshold: 0.1,   // per-pixel color sensitivity (pixelmatch)
-    failScore: 0.01,  // fraction of changed pixels that fails a page
-    overrides: [{ path: "/blog/**", failScore: 0.05 }],  // per-path gates
-  },
-
-  concurrency: { screenshots: 6, diffWorkers: 4 },
-
-  output: { report: "momus-report.html", db: "momus.sqlite" },
+  dev: "https://dev.example.com",  // the build under test
+  prod: "https://www.example.com", // the baseline
 });
 ```
 
-Notes:
+A typical starting point narrows the pages, hides what changes on every load,
+and loosens the gate where some churn is expected:
 
-- **Discovery** runs against `prod` (the baseline is the source of truth for
-  which pages exist). Pages come from an optional `urlList` file and/or the
-  `sitemap`, unioned together. **`urlList`** is a newline-delimited file of full
-  URLs or bare paths (blank lines ignored); a full URL must be under the `prod`
-  base URL (it is reduced to its path — the dev URL is the same path on the `dev`
-  base), otherwise the run fails. **Crawling is opt-in** — set `crawl: true` (or a
-  `crawl: { … }` object); when enabled it **seeds from the urlList∪sitemap union**
-  (or `crawl.startPath` when those are empty) and expands via same-origin links.
-  `maxPages` caps the total pages compared — the first N that survive
-  `include`/`exclude`, in discovery order — across every source (`0` = no cap).
-  Override per run with `--max-pages N`. `dev` and `prod` are treated as
-  origins — a path prefix on the base URL is not preserved when joining
-  discovered paths.
-- **`failScore`** is the fraction of a page's pixels that may differ before the
-  page fails. A page passes when its diff score is `<= failScore`. `overrides`
-  apply a different gate to matching path globs.
-- **`mask`** selectors are hidden before capture (via `visibility: hidden`, so
-  they keep their layout space) — for inherently dynamic regions (carousels, ads,
-  timestamps) that shouldn't produce false diffs. **`remove`** selectors are
-  instead deleted from the DOM before capture, so the page reflows and their space
-  collapses — for elements like cookie banners or chat widgets that shift layout.
-  Use narrow selectors: an overly broad `remove` (e.g. `*` or `body`) deletes the
-  whole page and yields a blank screenshot.
-- **`insecure`** disables TLS certificate validation for both the discovery
-  fetches and the browser page loads — for self-signed dev/staging servers. It
-  removes MITM protection, so it defaults to `false` and should stay off against
-  anything reachable by others; prefer a properly-issued cert or a trusted CA.
-- **`browser`** selects the Playwright engine used for every capture:
-  `"chromium"` (default), `"firefox"`, or `"webkit"`. Override per run with
-  `--browser NAME`. The engine is recorded in the prod baseline; a `momus run`
-  whose `browser` differs from the baseline's fails fast (exit 2), because
-  screenshots from different engines are not comparable. Re-capture with
-  `momus snapshot` to change the baseline's engine.
-- **`requestHeaders`** is an optional map of headers sent on every request — both
-  the discovery fetches and the browser page loads — to reach sites behind an
-  auth proxy. For example, to get through **Cloudflare Access** with a service
-  token, pull the credentials from the environment so no secrets live in the
-  config file:
+```ts
+import { defineConfig } from "momus";
 
-  ```ts
-  export default defineConfig({
-    dev: "https://dev.example.com",
-    prod: "https://www.example.com",
+export default defineConfig({
+  dev: "https://dev.example.com",
+  prod: "https://www.example.com",
 
-    requestHeaders: {
-      ...(Bun.env.CF_ACCESS_CLIENT_ID && {
-        "CF-Access-Client-Id": Bun.env.CF_ACCESS_CLIENT_ID,
-      }),
-      ...(Bun.env.CF_ACCESS_CLIENT_SECRET && {
-        "CF-Access-Client-Secret": Bun.env.CF_ACCESS_CLIENT_SECRET,
-      }),
-    },
+  viewports: [375, 1280],                 // mobile and desktop
 
-    // …rest of config
-  });
-  ```
+  discovery: {
+    maxPages: 200,                        // cap the run while you tune it
+    exclude: ["/admin/**", "/tag/**"],    // pages not worth comparing
+  },
 
-  Because the config reads the tokens from `Bun.env`, pass them into the
-  container at runtime with `-e` (Docker forwards the values from your host
-  shell, so the secrets stay out of the image and the config file):
+  stabilize: {
+    mask: [".carousel", "[data-timestamp]"],  // hide regions that change on every load
+    remove: [".cookie-banner"],               // delete overlays entirely
+  },
 
-  ```bash
-  docker run --rm -v "$PWD:/work" \
-    -e CF_ACCESS_CLIENT_ID \
-    -e CF_ACCESS_CLIENT_SECRET \
-    bjhale/momus run --config momus.config.ts
-  ```
+  diff: {
+    failScore: 0.01,                                     // fail a page above 1% changed pixels
+    overrides: [{ path: "/blog/**", failScore: 0.05 }],  // looser where content churns
+  },
+});
+```
 
-## Exit codes
+**[→ Configuration reference](docs/config.md)**: an annotated example with
+every setting, and each one's default.
 
-`momus run` returns a process exit code so it can gate CI:
+- [Sites](docs/config.md#sites): URLs, browser engine, request headers
+- [Discovery](docs/config.md#discovery): sitemap, crawl, URL list, include/exclude
+- [Viewports](docs/config.md#viewports) and [Stabilize](docs/config.md#stabilize): widths, waits, masking dynamic regions
+- [Diff](docs/config.md#diff): the pass/fail threshold and per-path overrides
+- [Output](docs/config.md#output): report and database paths, run history
+- [Scenarios](docs/config.md#scenarios) and [Setup](docs/config.md#setup): pages in a particular state, logging in
 
-| Code | Meaning |
-| --- | --- |
-| `0` | All pages captured and passed the diff gate. |
-| `1` | At least one page failed the gate **or** errored (e.g. a page failed to load or diff). A report is still written. |
-| `2` | Operational error that prevented the run (missing browser, bad config, unrecoverable failure). |
+## Documentation
+
+- [Commands and flags](docs/cli.md): `init`, `install-browser`, `snapshot`,
+  `run`, `report`, and the exit codes.
+- [Configuration](docs/config.md): every field, scenarios (pages in a
+  particular state) and setup (logging in).
+- [CI recipes](docs/ci.md): GitHub Actions and GitLab, keeping the baseline
+  between jobs, uploading the report.
+- [Stability](docs/stability.md): what 1.x promises, and the deprecation
+  policy. Changes are in the [changelog](CHANGELOG.md).
+- [Architecture](docs/architecture.md) and [decision records](docs/adr/), for
+  how it works inside.
 
 ## How it works
 
@@ -264,36 +133,32 @@ Notes:
 3. **Diff** — compare the two PNGs in a pool of worker threads (pixelmatch),
    producing a diff image and a diff score.
 4. **Gate** — mark each page pass/fail against `failScore` (or a path override).
-5. **Report** — write a self-contained `momus-report.html`: a summary header
-   (pass/fail verdict, counts, worst page, viewports) with an All/Passed/Failed
-   filter, and each comparison as a collapsible accordion (page, width, change %,
-   pass/fail) that expands to the `dev | prod | diff` screenshots — worst pages
-   first. Then exit with the code above.
-
-While capturing and diffing, momus renders a progress bar to **stderr** — one
-phase for prod capture (on a fresh baseline) and one for dev capture + diff. In a
-non-TTY environment (CI, piped output) it prints a plain progress line
-periodically instead of redrawing. stdout carries only the final summary, so
-piping stdout to a file stays clean.
+5. **Report** — write `momus-report.html`: a summary header (pass/fail
+   verdict, counts, worst page, viewports) with filters by status, source,
+   viewport and name, and each comparison as a collapsible accordion (page,
+   width, change %, pass/fail) — worst pages first. An open comparison shows
+   `dev | prod | diff` side by side, or a **slider** across dev and prod, an
+   **onion skin** fading between them, or dev alone with its changes
+   **highlighted**; **1:1** shows real pixels and drag pans. Keys: `j`/`k` next
+   and previous, `1`–`4` or `m` mode, `z` 1:1, `g` group a target's viewports
+   together, `/` search. The report needs JavaScript, all of it inline.
+   Changed areas are clustered into regions ("3 regions") and outlined
+   on all three images. A page whose dev and prod sizes differ says so ("dev is
+   40 px taller than prod"), and the band only one side covers is drawn magenta
+   in the diff. A capture that failed on one side still shows the side that
+   rendered. Then exit `0`, `1` or `2` ([exit codes](docs/cli.md#exit-codes)).
 
 ## Notes & known limitations
 
+- **The database is versioned and migrated in place.** Opening an `output.db`
+  from an older momus upgrades it step by step; don't open it with the older
+  version afterwards. A DB written by a **newer** momus is refused (exit 2) and
+  left untouched — upgrade momus or point `output.db` elsewhere.
 - **Distributed as a Docker image, not a standalone binary.** momus drives
   Chromium via Playwright, which needs its `node_modules` and a matching browser
   at runtime — awkward to ship as a lone executable. The image bundles momus
   (Bun + Playwright) and Chromium together, so there's nothing else to install,
   and diffs run in the full worker-thread pool (`concurrency.diffWorkers`).
-- **Dimension mismatches are detected but not yet annotated.** When a page's dev
-  and prod screenshots differ in height/width, the shorter image is padded with
-  an opaque sentinel color so the size change reliably shows up as a diff (and
-  raises the score). The report does not yet print an explicit "dimensions
-  differed" note, nor does it store the original per-side dimensions — a planned
-  enhancement.
-- **A one-sided load failure records the error but not the good side's image.**
-  If dev renders but prod 404s (or vice versa), the comparison is stored as an
-  error with the message; the successfully-captured side is not currently shown
-  on the error card.
 - **One baseline per DB.** `momus snapshot` stores a single prod baseline in
-  `output.db`; a new snapshot replaces it (and clears stale run results). Full
-  multi-run history remains out of scope; a separate server component may add it
-  later.
+  `output.db`; a new snapshot replaces it. The last `output.keepRuns` runs are
+  kept alongside it, and `momus report --run ID` re-renders any of them.

@@ -92,3 +92,11 @@ test("capture installs no route handler when requestHeaders is omitted", async (
   await capture(fakeRoutingBrowser(handlers), "https://x.example/page", 1280, STAB, false);
   expect(handlers).toHaveLength(0);
 });
+
+test("capture emulates the configured reducedMotion and colorScheme", async () => {
+  let opts: any;
+  await capture(fakeBrowser((o) => { opts = o; }), "https://x.example", 1280,
+    { ...STAB, reducedMotion: "reduce", colorScheme: "dark" });
+  expect(opts.reducedMotion).toBe("reduce");
+  expect(opts.colorScheme).toBe("dark");
+});

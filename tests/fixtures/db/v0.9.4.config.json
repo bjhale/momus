@@ -1,0 +1,7 @@
+{
+  "dev": "http://localhost:47802",
+  "prod": "http://localhost:47801",
+  "viewports": [375],
+  "discovery": { "urlList": "urls.txt", "sitemap": false },
+  "stabilize": { "waitUntil": "load", "settleMs": 0, "reducedMotion": "no-preference", "waitForImages": false }
+}

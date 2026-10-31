@@ -37,12 +37,12 @@ Each RFC has these sections:
 
 | # | Title | Milestone | Status |
 | --- | --- | --- | --- |
-| [0001](0001-targets.md) | Targets: generalize "page path" | M1 | Draft |
-| [0002](0002-storage-and-run-history.md) | Storage versioning and run history | M1 | Draft |
-| [0003](0003-approval-workflow.md) | Approved baselines and the approval workflow | M2 | Draft |
-| [0004](0004-scripted-interactions.md) | Scripted interactions, element capture, and auth | M3 | Draft |
-| [0005](0005-storybook.md) | Storybook stories as targets | M4 | Draft |
-| [0006](0006-capture-determinism-and-diff-quality.md) | Capture determinism and diff quality | M5 | Draft |
+| [0001](0001-targets.md) | Targets: generalize "page path" | M1 | Implemented |
+| [0002](0002-storage-and-run-history.md) | Storage versioning and run history | M1 | Implemented |
+| [0003](0003-approval-workflow.md) | Approved baselines and the approval workflow | — | Withdrawn (to 2.0, [ADR-0028](../adr/0028-approval-belongs-to-the-server.md)) |
+| [0004](0004-scripted-interactions.md) | Scripted interactions, element capture, and auth | M3 | Implemented |
+| [0005](0005-storybook.md) | Storybook stories as targets | — | Withdrawn |
+| [0006](0006-capture-determinism-and-diff-quality.md) | Capture determinism and diff quality | M5 | Implemented |
 | [0007](0007-review-report.md) | Review report v2 | M6 | Draft |
 | [0008](0008-cli-ci-integration.md) | CLI CI integration | M6 | Draft |
 | [0009](0009-stability-contract.md) | The 1.0 stability contract | 1.0 | Draft |

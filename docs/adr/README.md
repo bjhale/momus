@@ -28,20 +28,35 @@ For how the system fits together today, see [architecture.md](../architecture.md
 | [0014](0014-urllist-normalized-to-paths.md) | `urlList` entries normalize to paths; off-base URLs are a hard error | 2026-07-05 |
 | [0015](0015-remove-vs-mask.md) | `stabilize.remove` deletes from the DOM; `mask` only hides | 2026-07-05 |
 | [0016](0016-insecure-tls-flag.md) | One `insecure` flag covering both network surfaces | 2026-07-05 |
-| [0017](0017-report-self-contained-mostly-js-free.md) | Self-contained report, accordions without JS | 2026-07-05 |
+| [0017](0017-report-self-contained-mostly-js-free.md) | Self-contained report, accordions without JS (superseded by 0037) | 2026-07-05 |
 | [0018](0018-progress-behind-a-seam.md) | Progress bars behind a three-method seam, rendered to stderr | 2026-07-05 |
 | [0019](0019-selectable-browser-engine.md) | Selectable browser engine, gated against the baseline | 2026-07-10 |
 | [0020](0020-run-snapshot-flag.md) | `momus run --snapshot` re-captures the baseline in one invocation | 2026-08-18 |
+| [0021](0021-targets-and-source-provenance.md) | Targets replace page paths; `source` is provenance, not behavior | 2026-10-16 |
+| [0022](0022-added-and-removed-targets.md) | Added/removed targets are their own statuses; the baseline determines page paths | 2026-10-16 |
+| [0023](0023-per-target-recipe-gate.md) | A target's recipe is gated per target | 2026-10-16 |
+| [0024](0024-versioned-schema-migrations.md) | Versioned schema migrations; a newer DB is refused | 2026-10-17 |
+| [0025](0025-run-history.md) | Run history: inserted runs, never-reused ids, `keepRuns` retention | 2026-10-17 |
+| [0026](0026-prod-origin-in-the-gate.md) | The prod origin joins the compatibility gate | 2026-10-17 |
+| [0027](0027-atomic-baseline-replacement.md) | A baseline is replaced atomically; an all-error capture doesn't freeze | 2026-10-17 |
+| [0028](0028-approval-belongs-to-the-server.md) | Approval belongs to the server, not 1.x | 2026-10-17 |
+| [0029](0029-scenarios-and-step-order.md) | Scenarios are declarative steps; animations off before steps, mask and remove after | 2026-10-17 |
+| [0030](0030-setup-per-side.md) | Setup runs once per side; prod logs in only for a baseline; only prod's redacted setup is gated | 2026-10-17 |
+| [0031](0031-per-engine-test-processes.md) | Each non-default browser engine's tests run in their own process (superseded by 0036) | 2026-10-17 |
+| [0032](0032-determinism-defaults-and-old-baselines.md) | Determinism settings are gated; an older baseline reads as what it was captured with | 2026-10-18 |
+| [0033](0033-rendering-environment-in-the-gate.md) | The rendering environment is one gated value, set by the Docker image | 2026-10-18 |
+| [0034](0034-unstable-and-retries.md) | An unstable baseline image never fails the gate; `retries` re-captures dev only | 2026-10-18 |
+| [0035](0035-change-regions-and-the-pad-band.md) | Change regions are grid-clustered boxes; the pad band is magenta and counts as a region | 2026-10-18 |
+| [0036](0036-bun-1-4-3-one-test-process.md) | Bun 1.4.3, because 1.3.14 double-closes child-process descriptors; browser tests share one process | 2026-10-19 |
+| [0037](0037-report-requires-javascript.md) | The report requires JavaScript; images can be linked or previewed as WebP thumbnails | 2026-10-19 |
+| [0038](0038-engine-version-in-the-gate.md) | The browser engine version joins the compatibility gate; unknown versions aren't compared | 2026-10-20 |
+| [0039](0039-flags-per-command.md) | Each command accepts only its own flags | 2026-10-20 |
+| [0040](0040-strict-config.md) | Unknown config keys are an error, with a suggestion | 2026-10-20 |
+| [0041](0041-public-api-is-defineconfig.md) | The 1.x programmatic API is `defineConfig` and the config types | 2026-10-20 |
+| [0042](0042-native-per-arch-image-builds.md) | Each image platform builds on its own architecture | 2026-10-30 |
 
 ## Open questions
 
-Carried forward from the records above, unresolved:
-
-- **All-error materialize freezes a broken baseline.** If the first `run`
-  materializes while prod is unreachable, the baseline freezes with all-error
-  rows and is reused until `momus snapshot` runs again.
-  ([ADR-0011](0011-run-always-diffs-a-baseline.md))
-- **The compatibility gate ignores `prod_base_url`.** A DB pointed at a second
-  site diffs against the first site's baseline and reports garbage that looks
-  clean. ([ADR-0010](0010-baseline-compatibility-gate.md),
-  [ADR-0020](0020-run-snapshot-flag.md))
+None. The two carried forward from ADR-0010/0011 were resolved by
+[ADR-0026](0026-prod-origin-in-the-gate.md) and
+[ADR-0027](0027-atomic-baseline-replacement.md).

@@ -21,8 +21,12 @@ Teams eventually need:
 - **History:** when did this page start drifting, and which commit did it?
 - **Branch baselines:** a feature branch's approvals shouldn't affect main,
   and should carry over when the branch merges.
+- **Approval:** an intended change should pass the next run without
+  re-snapshotting prod, and targets with no prod (new features, pre-launch sites)
+  need a baseline someone accepted. 1.x has no approval at all
+  ([ADR-0028](../adr/0028-approval-belongs-to-the-server.md)).
 - **Shared review:** a designer approves in a browser, not by running a CLI
-  command with a JSON file.
+  command.
 - **Status checks:** a required "momus" check on the PR that goes green when
   the changes are approved.
 - **Scale:** images in object storage, not in a growing SQLite file passed
@@ -33,6 +37,12 @@ Teams eventually need:
 - **Ingest.** `momus upload` (or `momus run --upload`) sends the RFC-0008 JSON
   document, plus images addressed by content hash. The server already has most
   images, so uploads are mostly small.
+- **Approval.** Approving a capture makes it the baseline; rejecting records
+  the decision. Approved baselines don't need a prod at all. Withdrawn
+  [RFC-0003](0003-approval-workflow.md) is the starting point for the
+  model: per-target provenance, reject versus approve, and `added`/`removed`
+  resolved by approval. Approval refuses a capture that fails the baseline
+  compatibility gate ([ADR-0010](../adr/0010-baseline-compatibility-gate.md)).
 - **Baselines.** One baseline per `(project, branch)`. A new branch inherits
   from its merge base on the default branch; approvals on the branch are applied
   to the default branch when the PR merges.
@@ -56,8 +66,9 @@ These are commitments in the 1.x RFCs, collected here:
 - A target has a stable id independent of its URL ([RFC-0001](0001-targets.md)).
 - The JSON results document is versioned and contains everything needed for
   history ([RFC-0008](0008-cli-ci-integration.md)).
-- The approval model (sources, reject versus approve, provenance) doesn't
-  assume a single user ([RFC-0003](0003-approval-workflow.md)).
+- Nothing in 1.x presumes a baseline source other than a prod snapshot, so
+  the server can introduce approved baselines without a 1.x break
+  ([ADR-0028](../adr/0028-approval-belongs-to-the-server.md)).
 
 ## Non-goals (for 2.0)
 
@@ -72,4 +83,8 @@ These are commitments in the 1.x RFCs, collected here:
 - Does Bun on the server match the CLI's stack, or does the server pick its own?
 - How do branch baselines work across forks and squash merges?
 - What is the migration path for a team's existing `.sqlite` history: import,
-  or start fresh?
+  or start fresh? [RFC-0009](0009-stability-contract.md) settles that a
+  one-time import is acceptable; how the import works is still open.
+- Does a CLI-only team get any approval, for example a server-free
+  `momus approve` that writes the local `.sqlite`? If so, it must be designed
+  alongside the server's model, not before it.

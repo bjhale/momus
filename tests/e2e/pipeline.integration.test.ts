@@ -39,10 +39,11 @@ maybe("dev vs prod: unchanged page passes, changed page fails", async () => {
   });
 
   const db = openDb(":memory:");
+  let runId: number;
   const browser = await launchBrowser();
   const pool = new DiffPool(2);
   try {
-    await runPipeline({
+    runId = await runPipeline({
       config, db, startedAt: "2026-07-03T00:00:00Z", finishedAt: "2026-07-03T00:01:00Z",
       listJobs: async () => ["/", "/about"].flatMap((path) => [1280].map((viewport) => ({
         path, viewport,
@@ -57,7 +58,7 @@ maybe("dev vs prod: unchanged page passes, changed page fails", async () => {
     await pool.close(); await browser.close(); dev.stop(); prod.stop();
   }
 
-  const rows = readComparisons(db, 1);
+  const rows = readComparisons(db, runId);
   const home = rows.find((r) => r.path === "/")!;
   const about = rows.find((r) => r.path === "/about")!;
   expect(home.status).toBe("ok");

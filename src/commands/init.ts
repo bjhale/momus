@@ -30,7 +30,37 @@ export function configScaffold(): string {
     disableAnimations: true,
     mask: [".carousel", ".ad-slot", "[data-timestamp]"],
     // remove: [".cookie-banner"],   // delete elements from the DOM before capture (space collapses)
+    // clock: "2026-01-01T00:00:00Z", // pin Date so relative times ("3 minutes ago") render the same
+    // verify: true,                  // capture each baseline image twice; mark ones that move unstable
   },
+  // retries: 2,   // re-capture dev before failing a target
+
+  // Pages in another state. Steps: click, hover, fill, press, select, scroll, waitFor, wait, evaluate.
+  // Don't put credentials in scenario steps; they are stored in the .sqlite as-is.
+  // scenarios: [
+  //   {
+  //     id: "nav-open",
+  //     path: "/",
+  //     steps: [{ click: "button[aria-label=Menu]" }, { waitFor: "nav[data-open]" }],
+  //     capture: { element: "nav" },   // optional; default is the full page
+  //     viewports: [375],              // optional; narrows the viewports above
+  //   },
+  // ],
+
+  // Log in once per side before capturing. Credentials belong here (or in a
+  // storageState file), read from the environment, never in scenarios.
+  // setup: {
+  //   dev: {
+  //     steps: [
+  //       { goto: "/login" },
+  //       { fill: ["#email", Bun.env.MOMUS_DEV_USER] },
+  //       { fill: ["#password", Bun.env.MOMUS_DEV_PASS] },
+  //       { click: "button[type=submit]" },
+  //       { waitFor: "[data-user-menu]" },
+  //     ],
+  //   },
+  //   prod: { storageState: "prod-auth.json" },   // or steps, chosen per side
+  // },
 
   diff: {
     threshold: 0.1,

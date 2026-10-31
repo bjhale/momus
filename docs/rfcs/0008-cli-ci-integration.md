@@ -1,6 +1,6 @@
 # RFC-0008: CLI CI integration
 
-**Status:** Draft · **Milestone:** M6 · **Created:** 2026-10-16
+**Status:** Withdrawn · **Milestone:** M6 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -54,8 +54,8 @@ Read the commit, branch, PR number, and CI run URL from flags
 - uploads the report as an artifact,
 - writes the step summary, and optionally posts or updates a single PR comment.
 
-Documented recipes cover "nightly prod snapshot plus a PR diff," "Storybook
-with approved baselines," and GitLab CI.
+Documented recipes cover "nightly prod snapshot plus a PR diff" and GitLab
+CI.
 
 ### Sharding
 

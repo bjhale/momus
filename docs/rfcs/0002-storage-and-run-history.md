@@ -1,6 +1,6 @@
 # RFC-0002: Storage versioning and run history
 
-**Status:** Draft · **Milestone:** M1 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M1 · **Created:** 2026-10-16 · **ADRs:** [0024](../adr/0024-versioned-schema-migrations.md), [0025](../adr/0025-run-history.md), [0026](../adr/0026-prod-origin-in-the-gate.md), [0027](../adr/0027-atomic-baseline-replacement.md)
 
 ## Summary
 
@@ -11,9 +11,9 @@ the correctness gaps in the baseline model.
 ## Motivation
 
 - **Approval needs history.** [RFC-0003](0003-approval-workflow.md) approves
-  captures *from a run*. Today each `run` truncates the only run.
+  captures _from a run_. Today each `run` truncates the only run.
 - **Migrations are ad hoc.** New tables appear through `CREATE TABLE IF NOT
-  EXISTS`, and one column was added with a guarded `ALTER TABLE`. That doesn't
+EXISTS`, and one column was added with a guarded `ALTER TABLE`. That doesn't
   scale to the key change in [RFC-0001](0001-targets.md), and it can't tell a
   user that a DB is from a newer momus.
 - **The baseline identity is incomplete.** The compatibility gate ignores
@@ -50,9 +50,16 @@ the correctness gaps in the baseline model.
 ### Run history
 
 - `runs` gets real ids. `run` inserts a new run; it no longer truncates.
-- A **retention** setting, `output.keepRuns` (default 20; 0 means unlimited),
+- A run's captures and diff images belong to that run alone. They are never
+  deduplicated by content hash or shared between runs, even when they are
+  byte-identical. A run's evidence never changes after it's written, and pruning
+  a run is a plain delete with no reference counting.
+- A **retention** setting, `output.keepRuns` (default 5; 0 means unlimited),
   prunes the oldest runs and their image BLOBs after each run, followed by an
-  incremental vacuum. Without this the file grows with every run.
+  incremental vacuum. Without this the file grows with every run. The default
+  is small because people commit the file to git. 5 gives approval
+  ([RFC-0003](0003-approval-workflow.md)) a few recent runs to pick from without
+  multiplying the file size by 20.
 - The report renders one run, the latest by default; `momus report --run ID`
   re-renders an older one.
 - Each run records its provenance: the momus version, engine and version, the
@@ -76,10 +83,10 @@ the correctness gaps in the baseline model.
 
 The schema must be able to answer, for any run, without the config file:
 
-- [ ] Which momus version, engine and engine version produced it?
-- [ ] Which baseline (id plus identity) was it diffed against?
-- [ ] Which commit, branch or PR did it test, when CI metadata was provided?
-- [ ] What was each target's verdict, score, and the gate that applied?
+- [x] Which momus version, engine and engine version produced it?
+- [x] Which baseline (id plus identity) was it diffed against?
+- [x] Which commit, branch or PR did it test, when CI metadata was provided?
+- [x] What was each target's verdict, score, and the gate that applied?
 
 ## Non-goals
 
@@ -95,18 +102,33 @@ v0.9.x. Old DBs open and migrate; their baseline stays diffable.
 
 ## Open questions
 
-- Should image BLOBs be deduplicated by content hash? Unchanged pages make dev
-  captures identical across runs, so this could shrink history a lot. It is
-  cheap to add now and painful to add later.
-- Is `keepRuns: 20` right for a file people commit to git? Maybe the default
-  should be 1, to match today, with history as an opt-in.
+- None yet. Content-hash dedupe of BLOBs and the `keepRuns` default were
+  resolved on 2026-10-17: no dedupe, and a default of 5.
 
 ## Done when
 
-- [ ] Versioned migrations; a newer-version DB is refused with exit 2.
-- [ ] A v0.9.x fixture DB migrates and its baseline diffs unchanged.
-- [ ] Multiple runs are kept and pruned by `keepRuns`; `momus report --run ID`
+- [x] Versioned migrations; a newer-version DB is refused with exit 2.
+- [x] A v0.9.x fixture DB migrates and its baseline diffs unchanged.
+- [x] Multiple runs are kept and pruned by `keepRuns`; `momus report --run ID`
       works.
-- [ ] Every item in the known-gaps list is fixed and tested, and has an ADR
+- [x] Every item in the known-gaps list is fixed and tested, and has an ADR
       superseding or amending ADR-0010 and ADR-0011.
-- [ ] The server-ready checklist is answerable from the schema alone.
+- [x] The server-ready checklist is answerable from the schema alone.
+
+## Revisions
+
+- **2026-10-17: implemented.** Changes from the accepted text:
+  - CI metadata comes from `--commit`, `--branch` and `--pr` only. Detecting
+    GitHub Actions and GitLab CI environment variables stays with
+    [RFC-0008](0008-cli-ci-integration.md), which fills the same columns.
+  - An all-error capture is refused by `momus snapshot` and `run --snapshot`
+    too, not only by a first `run`. Replacement is one transaction, so the
+    previous baseline survives instead of being discarded
+    ([ADR-0027](../adr/0027-atomic-baseline-replacement.md)).
+  - `momus snapshot` no longer clears run history: each run keeps its own prod
+    images and records the baseline it used
+    ([ADR-0025](../adr/0025-run-history.md)).
+  - `snapshot --snapshot` is rejected at parse time; general per-command flag
+    validation stays with [RFC-0009](0009-stability-contract.md).
+  - `package.json`'s version is now the source of the recorded momus version,
+    and the release workflow checks the tag against it.

@@ -30,3 +30,9 @@ function globToRegExp(pattern: string): RegExp {
   re += "$";
   return new RegExp(re);
 }
+
+/** The discovery keep-predicate: matches some include glob and no exclude glob.
+ * Shared by discovery and the pages source so both filter identically. */
+export function pathFilter(include: string[], exclude: string[]): (path: string) => boolean {
+  return (p) => include.some((g) => matchPath(p, g)) && !exclude.some((g) => matchPath(p, g));
+}

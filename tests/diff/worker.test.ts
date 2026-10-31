@@ -21,7 +21,7 @@ test("worker computes a diff and posts it back", async () => {
   const result = await new Promise<any>((resolve, reject) => {
     worker.onmessage = (e) => resolve(e.data);
     worker.onerror = (e) => reject(e);
-    worker.postMessage({ id: 1, aPng: a, bPng: b, threshold: 0.1 });
+    worker.postMessage({ id: 1, aPng: a, bPng: b, opts: { threshold: 0.1, includeAA: false } });
   });
 
   expect(result.id).toBe(1);

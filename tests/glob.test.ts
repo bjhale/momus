@@ -1,6 +1,6 @@
 // tests/glob.test.ts
 import { test, expect } from "bun:test";
-import { matchPath } from "../src/glob";
+import { matchPath, pathFilter } from "../src/glob";
 
 test("exact match", () => {
   expect(matchPath("/pricing", "/pricing")).toBe(true);
@@ -25,4 +25,10 @@ test("bare and mid-pattern globstar (regression guards)", () => {
   expect(matchPath("/a/b", "/a/**/b")).toBe(true);
   expect(matchPath("/a/x/y/b", "/a/**/b")).toBe(true);
   expect(matchPath("/a/b/c", "/a/**/b")).toBe(false);
+});
+
+test("pathFilter keeps included, drops excluded", () => {
+  const keep = pathFilter(["/**"], ["/admin/**"]);
+  expect(keep("/a")).toBe(true);
+  expect(keep("/admin/x")).toBe(false);
 });

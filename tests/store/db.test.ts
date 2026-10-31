@@ -1,13 +1,27 @@
 // tests/store/db.test.ts
-import { test, expect } from "bun:test";
+import { test, expect, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { rmSync } from "node:fs";
-import { openDb, startRun, saveComparison, finishRun, readComparisons } from "../../src/store/db";
+import { rmSync, mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import {
+  openDb as openDbRaw, startRun, saveComparison, finishRun, readComparisons,
+  latestRunId, listRunIds, readRun, pruneRuns,
+} from "../../src/store/db";
 import type { ComparisonRecord } from "../../src/types";
 import {
   writeSnapshot, readSnapshot, saveBaselineImage, readBaselineImages,
-  clearBaseline, clearRuns,
+  clearBaseline, type BaselineImageRow,
 } from "../../src/store/db";
+
+// Every handle is closed at test end, even when an assertion throws first.
+const opened: Database[] = [];
+const openDb = (path: string): Database => { const d = openDbRaw(path); opened.push(d); return d; };
+let dir = "";
+afterEach(() => {
+  for (const d of opened.splice(0)) { try { d.close(); } catch { /* already closed */ } }
+  if (dir) rmSync(dir, { recursive: true, force: true });
+  dir = "";
+});
 
 const STAB = {
   waitUntil: "networkidle" as const, settleMs: 500, timeoutMs: 15000,
@@ -46,50 +60,6 @@ test("start run, save comparison, read back", () => {
   expect(Array.from(rows[0]!.devImage!)).toEqual([1, 2, 3]);
   expect(Array.from(rows[0]!.prodImage!)).toEqual([4, 5, 6]);
   expect(Array.from(rows[0]!.diffImage!)).toEqual([7, 8, 9]);
-});
-
-test("startRun overwrites the prior single run", () => {
-  const db = openDb(":memory:");
-
-  const firstRunId = startRun(db, {
-    devBaseUrl: "https://dev.example.com",
-    prodBaseUrl: "https://www.example.com",
-    configJson: "{}",
-    startedAt: "2026-07-03T00:00:00Z",
-  });
-  const oldRec: ComparisonRecord = {
-    path: "/old", viewport: 1280,
-    devUrl: "https://dev.example.com/old",
-    prodUrl: "https://www.example.com/old",
-    width: 1280, height: 2000, diffPixels: 10, diffScore: 0.5,
-    passed: false, status: "ok",
-  };
-  saveComparison(db, firstRunId, oldRec);
-  finishRun(db, firstRunId, "complete", "2026-07-03T00:01:00Z");
-  expect(readComparisons(db, firstRunId).length).toBe(1);
-
-  // Second run (new urls) must clear all prior comparisons via the DELETE overwrite.
-  const secondRunId = startRun(db, {
-    devBaseUrl: "https://dev2.example.com",
-    prodBaseUrl: "https://www2.example.com",
-    configJson: "{}",
-    startedAt: "2026-07-03T01:00:00Z",
-  });
-  expect(secondRunId).toBe(1);
-  expect(readComparisons(db, secondRunId).length).toBe(0);
-
-  // A freshly saved comparison in the new run is the only one present.
-  const newRec: ComparisonRecord = {
-    path: "/new", viewport: 1280,
-    devUrl: "https://dev2.example.com/new",
-    prodUrl: "https://www2.example.com/new",
-    width: 1280, height: 2000, diffPixels: 5, diffScore: 0.1,
-    passed: true, status: "ok",
-  };
-  saveComparison(db, secondRunId, newRec);
-  const rows = readComparisons(db, secondRunId);
-  expect(rows.length).toBe(1);
-  expect(rows[0]!.path).toBe("/new");
 });
 
 test("readSnapshot returns null on a fresh DB", () => {
@@ -196,11 +166,182 @@ test("clearBaseline empties both baseline tables but leaves it re-usable", () =>
   expect(readBaselineImages(db).length).toBe(0);
 });
 
-test("clearRuns empties runs and comparisons only", () => {
+const RUN = { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "s" };
+
+test("startRun keeps earlier runs and returns increasing ids", () => {
   const db = openDb(":memory:");
-  startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "s" });
-  writeSnapshot(db, { createdAt: "a", prodBaseUrl: "https://one.com", viewports: [1], stabilize: STAB, configJson: "{}" });
-  clearRuns(db);
-  expect((db.query("SELECT COUNT(*) AS n FROM runs").get() as { n: number }).n).toBe(0);
-  expect(readSnapshot(db)).not.toBeNull(); // baseline untouched
+  const a = startRun(db, RUN);
+  saveComparison(db, a, { path: "/a", viewport: 1, devUrl: "d", prodUrl: "p", status: "ok" });
+  const b = startRun(db, RUN);
+  expect(b).toBeGreaterThan(a);
+  expect(readComparisons(db, a).length).toBe(1);
+  expect(readComparisons(db, b).length).toBe(0);
+  expect(latestRunId(db)).toBe(b);
+  expect(listRunIds(db)).toEqual([a, b]);
+});
+
+test("latestRunId is null on a fresh DB", () => {
+  expect(latestRunId(openDb(":memory:"))).toBeNull();
+});
+
+test("run provenance round-trips", () => {
+  const db = openDb(":memory:");
+  const id = startRun(db, {
+    ...RUN, momusVersion: "1.2.3", engine: "firefox", engineVersion: "140.0", configHash: "abc",
+    baselineId: 4, baselineJson: '{"x":1}', allowAdded: true, allowRemoved: false,
+    ci: { commit: "deadbeef", branch: "main", pr: "42" },
+  });
+  finishRun(db, id, "complete", "f");
+  expect(readRun(db, id)).toEqual({
+    id, startedAt: "s", finishedAt: "f", status: "complete", devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}",
+    momusVersion: "1.2.3", engine: "firefox", engineVersion: "140.0", configHash: "abc",
+    baselineId: 4, baselineJson: '{"x":1}', allowAdded: true, allowRemoved: false,
+    ci: { commit: "deadbeef", branch: "main", pr: "42" },
+  });
+});
+
+test("a run without provenance reads with defaults; a missing run is null", () => {
+  const db = openDb(":memory:");
+  const id = startRun(db, RUN);
+  const r = readRun(db, id)!;
+  expect([r.momusVersion, r.baselineId, r.allowAdded, r.allowRemoved, r.ci]).toEqual([undefined, undefined, false, false, {}]);
+  expect(readRun(db, id + 1)).toBeNull();
+});
+
+test("failScore round-trips on a comparison", () => {
+  const db = openDb(":memory:");
+  const id = startRun(db, RUN);
+  saveComparison(db, id, { path: "/", viewport: 1, devUrl: "d", prodUrl: "p", status: "ok", diffScore: 0.2, failScore: 0.05, passed: false });
+  saveComparison(db, id, { path: "/e", viewport: 1, devUrl: "d", prodUrl: "p", status: "error", error: "x" });
+  const rows = readComparisons(db, id);
+  expect(rows.find((r) => r.path === "/")!.failScore).toBe(0.05);
+  expect(rows.find((r) => r.path === "/e")!.failScore).toBeUndefined();
+});
+
+test("pruneRuns keeps the newest N runs and their comparisons", () => {
+  const db = openDb(":memory:");
+  const ids = [1, 2, 3, 4].map(() => {
+    const id = startRun(db, RUN);
+    saveComparison(db, id, { path: "/", viewport: 1, devUrl: "d", prodUrl: "p", status: "ok", devImage: new Uint8Array(10) });
+    return id;
+  });
+  expect(pruneRuns(db, 2)).toBe(2);
+  expect(listRunIds(db)).toEqual(ids.slice(2));
+  const n = (db.query("SELECT COUNT(*) AS n FROM comparisons").get() as { n: number }).n;
+  expect(n).toBe(2);
+});
+
+test("pruneRuns with keep 0 keeps everything", () => {
+  const db = openDb(":memory:");
+  startRun(db, RUN); startRun(db, RUN);
+  expect(pruneRuns(db, 0)).toBe(0);
+  expect(listRunIds(db).length).toBe(2);
+});
+
+test("pruneRuns reclaims space in the file", () => {
+  dir = mkdtempSync(join(import.meta.dir, ".tmp-prune-"));
+  const db = openDb(join(dir, "p.sqlite"));
+  for (let i = 0; i < 3; i++) {
+    const id = startRun(db, RUN);
+    saveComparison(db, id, { path: "/", viewport: 1, devUrl: "d", prodUrl: "p", status: "ok", devImage: new Uint8Array(500_000) });
+  }
+  pruneRuns(db, 1);
+  expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
+});
+
+test("each writeSnapshot gets a new id; only one snapshot row exists", () => {
+  const db = openDb(":memory:");
+  const a = writeSnapshot(db, { createdAt: "a", prodBaseUrl: "https://one.com", viewports: [1], stabilize: STAB, configJson: "{}" });
+  const b = writeSnapshot(db, { createdAt: "b", prodBaseUrl: "https://two.com", viewports: [2], stabilize: STAB, configJson: "{}" });
+  expect(b).toBeGreaterThan(a);
+  expect(readSnapshot(db)!.id).toBe(b);
+  expect(readSnapshot(db)!.prodBaseUrl).toBe("https://two.com");
+  expect((db.query("SELECT COUNT(*) AS n FROM snapshot").get() as { n: number }).n).toBe(1);
+});
+
+test("comparison identity round-trips; omitted identity defaults to a page", () => {
+  const db = openDb(":memory:");
+  const runId = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "t" });
+  saveComparison(db, runId, { path: "/a", viewport: 1280, devUrl: "d", prodUrl: "p", status: "ok" });
+  saveComparison(db, runId, {
+    targetId: "scenarios:nav", source: "scenarios", label: "Nav open",
+    path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", status: "added",
+  });
+  const rows = readComparisons(db, runId);
+  const page = rows.find((r) => r.path === "/a")!;
+  expect([page.targetId, page.source, page.label]).toEqual(["/a", "pages", "/a"]);
+  const sc = rows.find((r) => r.targetId === "scenarios:nav")!;
+  expect([sc.source, sc.label, sc.status]).toEqual(["scenarios", "Nav open", "added"]);
+});
+
+test("two targets sharing a path are distinct comparison rows", () => {
+  const db = openDb(":memory:");
+  const runId = startRun(db, { devBaseUrl: "d", prodBaseUrl: "p", configJson: "{}", startedAt: "t" });
+  saveComparison(db, runId, { path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", status: "ok" });
+  saveComparison(db, runId, { targetId: "scenarios:nav", source: "scenarios", label: "Nav", path: "/", viewport: 1280, devUrl: "d", prodUrl: "p", status: "ok" });
+  expect(readComparisons(db, runId).length).toBe(2);
+});
+
+test("baseline identity and recipe round-trip; omitted identity defaults to a page", () => {
+  const db = openDb(":memory:");
+  saveBaselineImage(db, { path: "/", viewport: 1280, prodUrl: "u", status: "ok" });
+  saveBaselineImage(db, {
+    targetId: "scenarios:nav", source: "scenarios", label: "Nav", recipeJson: '{"a":1}',
+    path: "/", viewport: 1280, prodUrl: "u", status: "ok",
+  });
+  const [page, sc] = readBaselineImages(db) as [BaselineImageRow, BaselineImageRow]; // ordered by target_id: "/" < "scenarios:nav"
+  expect([page.targetId, page.source, page.label, page.recipeJson]).toEqual(["/", "pages", "/", null]);
+  expect([sc.targetId, sc.source, sc.label, sc.recipeJson]).toEqual(["scenarios:nav", "scenarios", "Nav", '{"a":1}']);
+});
+
+test("snapshot setupJson round-trips; absent reads as null", () => {
+  const db = openDb(":memory:");
+  const m = { createdAt: "t", prodBaseUrl: "https://p", viewports: [1280], stabilize: STAB, configJson: "{}" };
+  writeSnapshot(db, { ...m, setupJson: '{"steps":[]}' });
+  expect(readSnapshot(db)!.setupJson).toBe('{"steps":[]}');
+  writeSnapshot(db, m);
+  expect(readSnapshot(db)!.setupJson).toBeNull();
+});
+
+test("RFC-0006 comparison fields round-trip; absent ones read as undefined", () => {
+  const db = openDb(":memory:");
+  const id = startRun(db, RUN);
+  const full: ComparisonRecord = {
+    path: "/", viewport: 1, devUrl: "d", prodUrl: "p", status: "unstable", diffScore: 0.1, passed: false,
+    devWidth: 100, devHeight: 140, prodWidth: 90, prodHeight: 100,
+    regions: [{ x: 1, y: 2, width: 3, height: 4 }], regionCount: 7,
+    unstableRegions: [{ x: 5, y: 6, width: 7, height: 8 }], retries: 2,
+  };
+  saveComparison(db, id, full);
+  saveComparison(db, id, { path: "/old", viewport: 1, devUrl: "d", prodUrl: "p", status: "ok" });
+  const rows = readComparisons(db, id);
+  const r = rows.find((x) => x.path === "/")!;
+  expect([r.devWidth, r.devHeight, r.prodWidth, r.prodHeight]).toEqual([100, 140, 90, 100]);
+  expect(r.regions).toEqual([{ x: 1, y: 2, width: 3, height: 4 }]);
+  expect(r.regionCount).toBe(7);
+  expect(r.unstableRegions).toEqual([{ x: 5, y: 6, width: 7, height: 8 }]);
+  expect(r.retries).toBe(2);
+  expect(r.status).toBe("unstable");
+  const o = rows.find((x) => x.path === "/old")!;
+  expect([o.devWidth, o.regions, o.regionCount, o.unstableRegions, o.retries]).toEqual([undefined, undefined, undefined, undefined, undefined]);
+});
+
+test("baseline unstableRegions round-trip; absent reads as undefined", () => {
+  const db = openDb(":memory:");
+  saveBaselineImage(db, { path: "/", viewport: 1, prodUrl: "p", status: "ok", image: new Uint8Array([1]), unstableRegions: [{ x: 1, y: 2, width: 3, height: 4 }] });
+  saveBaselineImage(db, { path: "/b", viewport: 1, prodUrl: "p", status: "ok", image: new Uint8Array([1]) });
+  const [a, b] = readBaselineImages(db);
+  expect(a!.unstableRegions).toEqual([{ x: 1, y: 2, width: 3, height: 4 }]);
+  expect(b!.unstableRegions).toBeUndefined();
+});
+
+test("snapshot rendering round-trips; absent reads as host", () => {
+  const db = openDb(":memory:");
+  const m = { createdAt: "t", prodBaseUrl: "https://p", viewports: [1280], stabilize: STAB, configJson: "{}" };
+  writeSnapshot(db, { ...m, rendering: "pinned" });
+  expect(readSnapshot(db)!.rendering).toBe("pinned");
+  writeSnapshot(db, m);
+  expect(readSnapshot(db)!.rendering).toBe("host");
+  db.exec("UPDATE snapshot SET rendering = NULL");
+  expect(readSnapshot(db)!.rendering).toBe("host");
 });

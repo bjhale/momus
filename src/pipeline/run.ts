@@ -1,24 +1,50 @@
 // src/pipeline/run.ts
 import type { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import type { ResolvedConfig } from "../config/schema";
 import type { CaptureResult, ComparisonRecord } from "../types";
 import type { DiffResponse } from "../diff/worker";
+import type { DiffOptions } from "../diff/diff";
 import type { Progress } from "../progress";
-import { startRun, saveComparison, finishRun } from "../store/db";
+import { redactConfig } from "../config/redact";
+import { canonicalJson, type Recipe, type TargetSourceName } from "../targets/target";
+import { startRun, saveComparison, finishRun, type CiMetadata } from "../store/db";
+import { MOMUS_VERSION } from "../version";
 import { mapWithConcurrency } from "./queue";
-import { resolveFailScore, passed } from "./verdict";
+import { resolveFailScore, passed, failsGate, withinUnstable, STRICT_GATE } from "./verdict";
+
+/** sha256 of the resolved config (setup secrets redacted first, so none is
+ * ever hashed) with sorted keys, so two runs with the same
+ * effective config hash alike regardless of how the file was written. */
+export function configHash(config: ResolvedConfig): string {
+  return createHash("sha256").update(canonicalJson(redactConfig(config))!).digest("hex");
+}
 
 export interface DiffPoolLike {
-  submit(a: Uint8Array, b: Uint8Array, threshold: number): Promise<DiffResponse>;
+  submit(a: Uint8Array, b: Uint8Array, opts: DiffOptions): Promise<DiffResponse>;
   close(): Promise<void>;
 }
 
-/** One unit of comparison work: a path at a viewport, with both side URLs resolved. */
+/** What runPipeline does with a job. reconcile() decides; capture and diff
+ * never look at `source` (RFC-0001). */
+export type JobAction = "compare" | "added" | "removed" | "error";
+
+/** One unit of comparison work: a target at a viewport, with both side URLs
+ * resolved. Identity and action are optional and default to a page compare
+ * (id = label = path, source = pages), which is the pre-targets job shape. */
 export interface Job {
   path: string;
   viewport: number;
   devUrl: string;
   prodUrl: string;
+  targetId?: string;
+  source?: TargetSourceName;
+  label?: string;
+  /** The target's recipe; capture runs it on both sides. */
+  recipe?: Recipe;
+  action?: JobAction;
+  /** Message for action "error". */
+  error?: string;
 }
 
 export interface RunPipelineArgs {
@@ -39,13 +65,61 @@ export interface RunPipelineArgs {
   diffPool: DiffPoolLike;
   /** Optional progress reporter for the capture+diff phase. */
   progress?: Progress;
+  /** Browser build that captured dev, e.g. "131.0.6778.33". */
+  engineVersion?: string;
+  /** The baseline these jobs diff against: id plus identity JSON. */
+  baseline?: { id: number; identityJson: string };
+  ci?: CiMetadata;
 }
 
-export async function runPipeline(args: RunPipelineArgs): Promise<void> {
+/** One dev capture against prod: a fresh record built on `base`, never
+ * mutating it, so a retry starts clean. A capture failure keeps the side that
+ * rendered, so the report can show it (RFC-0006). */
+async function compareOnce(
+  args: RunPipelineArgs, base: ComparisonRecord, dev: CaptureResult, prod: CaptureResult, failScore: number,
+): Promise<ComparisonRecord> {
+  const rec: ComparisonRecord = { ...base };
+  if (!dev.ok || !prod.ok) {
+    rec.status = "error";
+    rec.error = [dev.ok ? null : `dev: ${dev.error}`, prod.ok ? null : `prod: ${prod.error}`]
+      .filter(Boolean).join("; ");
+    if (dev.ok) rec.devImage = dev.png;
+    if (prod.ok) rec.prodImage = prod.png;
+    return rec;
+  }
+  rec.devImage = dev.png; rec.prodImage = prod.png;
+  const { diff: d } = args.config;
+  const diff = await args.diffPool.submit(dev.png!, prod.png!, { threshold: d.threshold, includeAA: d.includeAA });
+  if (!diff.ok) {
+    rec.status = "error"; rec.error = `diff: ${diff.error}`;
+    return rec;
+  }
+  rec.diffImage = diff.diffPng; rec.width = diff.width; rec.height = diff.height;
+  rec.diffPixels = diff.diffPixels; rec.diffScore = diff.diffScore;
+  // Diff a = dev, b = prod.
+  rec.devWidth = diff.aWidth; rec.devHeight = diff.aHeight;
+  rec.prodWidth = diff.bWidth; rec.prodHeight = diff.bHeight;
+  rec.regions = diff.regions; rec.regionCount = diff.regionCount;
+  rec.failScore = failScore;
+  rec.passed = passed(diff.diffScore!, failScore);
+  // The baseline moves here: shown either way, waived only if that's all that changed.
+  if (prod.unstableRegions) {
+    rec.unstableRegions = prod.unstableRegions;
+    if (withinUnstable(rec.regions ?? [], rec.regionCount ?? 0, prod.unstableRegions)) rec.status = "unstable";
+  }
+  return rec;
+}
+
+export async function runPipeline(args: RunPipelineArgs): Promise<number> {
   const { config, db } = args;
   const runId = startRun(db, {
     devBaseUrl: config.dev, prodBaseUrl: args.prodBaseUrl ?? config.prod,
-    configJson: JSON.stringify(config), startedAt: args.startedAt,
+    configJson: JSON.stringify(redactConfig(config)), startedAt: args.startedAt,
+    momusVersion: MOMUS_VERSION, engine: config.browser, engineVersion: args.engineVersion,
+    configHash: configHash(config),
+    baselineId: args.baseline?.id, baselineJson: args.baseline?.identityJson,
+    allowAdded: config.diff.allowAdded, allowRemoved: config.diff.allowRemoved,
+    ci: args.ci,
   });
 
   try {
@@ -54,33 +128,49 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
 
     await mapWithConcurrency(jobs, config.concurrency.screenshots, async (job) => {
       const rec: ComparisonRecord = {
+        targetId: job.targetId ?? job.path, source: job.source ?? "pages", label: job.label ?? job.path,
         path: job.path, viewport: job.viewport, devUrl: job.devUrl, prodUrl: job.prodUrl, status: "ok",
       };
       // Per-job guard: an unexpected throw from a seam must be recorded as an
       // error comparison, never propagated — one bad page must not abort the run.
       try {
-        const [dev, prod] = await Promise.all([args.getDev(job), args.getProd(job)]);
-
-        if (!dev.ok || !prod.ok) {
-          rec.status = "error";
-          rec.error = [dev.ok ? null : `dev: ${dev.error}`, prod.ok ? null : `prod: ${prod.error}`]
-            .filter(Boolean).join("; ");
+        const action = job.action ?? "compare";
+        if (action === "error") {
+          rec.status = "error"; rec.error = job.error ?? "unknown error";
+          saveComparison(db, runId, rec);
+          return;
+        }
+        if (action === "removed") {
+          // Gone from the live list: nothing to capture. Show what the baseline held.
+          const prod = await args.getProd(job);
+          rec.status = "removed";
+          if (prod.ok) rec.prodImage = prod.png; else rec.error = `prod: ${prod.error}`;
+          saveComparison(db, runId, rec);
+          return;
+        }
+        if (action === "added") {
+          // No baseline to diff against: capture dev so a reviewer can see it.
+          const dev = await args.getDev(job);
+          if (dev.ok) { rec.status = "added"; rec.devImage = dev.png; }
+          else { rec.status = "error"; rec.error = `dev: ${dev.error}`; }
           saveComparison(db, runId, rec);
           return;
         }
 
-        rec.devImage = dev.png; rec.prodImage = prod.png;
-        const diff = await args.diffPool.submit(dev.png!, prod.png!, config.diff.threshold);
-        if (!diff.ok) {
-          rec.status = "error"; rec.error = `diff: ${diff.error}`;
-          saveComparison(db, runId, rec);
-          return;
-        }
-        rec.diffImage = diff.diffPng; rec.width = diff.width; rec.height = diff.height;
-        rec.diffPixels = diff.diffPixels; rec.diffScore = diff.diffScore;
+        const [firstDev, prod] = await Promise.all([args.getDev(job), args.getProd(job)]);
         const failScore = resolveFailScore(job.path, config.diff.failScore, config.diff.overrides);
-        rec.passed = passed(diff.diffScore!, failScore);
-        saveComparison(db, runId, rec);
+        // Prod is the frozen baseline, so only dev is re-captured, and only
+        // while a retry could change the outcome: never for a baseline error
+        // (ADR-0034). An unstable row doesn't fail the gate, so it stops too.
+        let dev = firstDev, retries = 0;
+        let out = await compareOnce(args, rec, dev, prod, failScore);
+        while (retries < config.retries && prod.ok && failsGate(out, STRICT_GATE)) {
+          retries++;
+          dev = await args.getDev(job);
+          out = await compareOnce(args, rec, dev, prod, failScore);
+        }
+        out.retries = retries;
+        saveComparison(db, runId, out);
       } catch (err) {
         rec.status = "error";
         rec.error = err instanceof Error ? err.message : String(err);
@@ -100,4 +190,5 @@ export async function runPipeline(args: RunPipelineArgs): Promise<void> {
   // diffPool.close() is intentionally NOT called here — the CLI caller owns the
   // pool lifecycle, symmetric with owning listJobs/getDev/getProd.
   finishRun(db, runId, "complete", args.finishedAt ?? new Date().toISOString());
+  return runId;
 }

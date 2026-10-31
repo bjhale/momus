@@ -1,6 +1,6 @@
 # ADR-0017: Self-contained report, accordions without JS, one small script for the filter
 
-**Date:** 2026-07-05 · **Status:** Accepted
+**Date:** 2026-07-05 · **Status:** Superseded by [ADR-0037](0037-report-requires-javascript.md)
 
 ## Context
 

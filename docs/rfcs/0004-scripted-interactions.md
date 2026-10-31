@@ -1,6 +1,6 @@
 # RFC-0004: Scripted interactions, element capture, and auth
 
-**Status:** Draft · **Milestone:** M3 · **Created:** 2026-10-16
+**Status:** Implemented · **Milestone:** M3 · **Created:** 2026-10-16
 
 ## Summary
 
@@ -85,11 +85,48 @@ setup: {
 - Setup runs **once per side** (dev, prod), in its own browser context, before
   any capture. The resulting cookies and storage are saved and loaded into every
   capture context for that side.
+- `goto` is relative to each side's base URL, so one set of steps logs in to
+  both when only the hosts differ.
 - **A setup failure is operational (exit 2)**, not per-target. Without a
   session, every page would just capture the login screen. An honest exit 2 is
   better than 500 identical "passing" screenshots of a login form.
 - Secrets come from the environment, as with `requestHeaders`. The saved
   session is never written to the `.sqlite` or the report.
+
+#### Separate setup for dev and prod
+
+Dev and prod often need different logins: a staging user versus a production
+user, a different identity provider, or an SSO page on prod that dev doesn't
+have. So `setup` takes either one setup shared by both sides (above) or one per
+side:
+
+```ts
+setup: {
+  dev: {
+    steps: [
+      { goto: "/login" },
+      { fill: ["#email", Bun.env.MOMUS_DEV_USER] },
+      { fill: ["#password", Bun.env.MOMUS_DEV_PASS] },
+      { click: "button[type=submit]" },
+      { waitFor: "[data-user-menu]" },
+    ],
+  },
+  prod: { storageState: "prod-auth.json" },
+},
+```
+
+- Each side is `{ steps }` or `{ storageState }`, chosen independently. The
+  steps can differ completely, not only the credentials.
+- The two forms don't mix. A `setup` that has `dev` or `prod` keys can't also
+  have top-level `steps` or `storageState`, so there's never a question of which
+  one wins. A per-side `setup` must define both sides. The shared form is
+  already the way to say "same on both," and an accidental logged-out side would
+  capture a login screen.
+- A setup failure names the side and the failing step, for example
+  `setup (prod) step 3: fill "#password"`, and exits 2 as above.
+- Different users can render different personalized content, such as a name in
+  the header. That shows up as a diff. `mask` is the tool for it, and the docs
+  should say so next to this example.
 
 ## Non-goals
 
@@ -98,6 +135,12 @@ setup: {
   is the escape hatch.
 - Recording steps from a live browser session (codegen). Worth doing later;
   not needed for 1.0.
+- Step fragments, shared sequences, conditionals, or loops. momus is not a
+  browser automation platform. A scenario is a short, flat list of steps that
+  puts one page in one state. A scenario that needs more is a sign it belongs
+  in an end-to-end test suite. The config file is TypeScript, so a team that
+  wants to reuse steps can spread a shared array (`steps: [...openCookieDialog,
+…]`) without momus knowing.
 
 ## Compatibility
 
@@ -106,20 +149,50 @@ setup: {
   compatibility gate, compared by a hash of the steps. Scenario recipes join the
   per-target gate (RFC-0001). Defaults are `[]` and `undefined`, so old
   baselines stay diffable ([ADR-0010](../adr/0010-baseline-compatibility-gate.md)).
+- **Only the prod side's setup is gated.** The baseline is a prod capture, so the
+  prod setup is what shaped its pixels, as with the prod origin
+  ([ADR-0026](../adr/0026-prod-origin-in-the-gate.md)). Changing the dev setup
+  doesn't make the baseline undiffable. In the shared form, the shared setup is
+  the prod setup.
+- **The hash never covers secrets.** `fill` values and `storageState` contents
+  are left out of the hash and only their presence is recorded, while the
+  selectors, step order, and other values are hashed. Rotating a password then
+  doesn't invalidate the baseline, and the `.sqlite`, which teams commit,
+  never holds a hash of a credential. The cost is that switching prod to a
+  different user isn't caught by the gate; re-snapshot when you do.
 
 ## Open questions
 
-- Should scenarios be able to share a sequence of steps, such as "open the
-  cookie dialog"? Fragments add complexity; copying steps is fine until it
-  isn't.
-- Should prod and dev need different credentials, as with separate staging
-  users? Probably yes: allow `setup.dev` and `setup.prod`.
+None.
 
 ## Done when
 
-- [ ] Scenarios with the full step vocabulary work on all three engines.
-- [ ] Element capture works, and a missing element errors per target.
-- [ ] Setup logs in once per side; a setup failure exits 2 with the failing
-      step named.
-- [ ] Recipes and setup are gated for compatibility; old baselines still diff.
-- [ ] e2e: a fixture site with a login form and a toggled menu.
+- [x] Scenarios with the full step vocabulary work on all three engines (WebKit verified 2026-10-19 in the Playwright Linux image, where it can launch; on WSL it is skipped).
+- [x] Element capture works, and a missing element errors per target.
+- [x] Setup logs in once per side; a setup failure exits 2 with the side and
+      failing step named.
+- [x] Per-side `setup.dev` / `setup.prod` work, including steps on one side and
+      `storageState` on the other; mixing shared and per-side keys, or defining
+      only one side, is a config error.
+- [x] Only the prod setup is gated, and the gate hash excludes `fill` values
+      and `storageState` contents.
+- [x] Recipes and setup are gated for compatibility; old baselines still diff.
+- [x] e2e: a fixture site with a login form and a toggled menu, logged in
+      with different credentials on dev and prod.
+
+## Revisions
+
+- **2026-10-17: implemented** ([ADR-0029](../adr/0029-scenarios-and-step-order.md),
+  [ADR-0030](../adr/0030-setup-per-side.md)).
+- Setup's identity in the gate is **redacted canonical JSON**
+  (`snapshot.setup_json`), not a hash of the steps. It is readable, and neither a
+  secret nor a hash of one is stored. The no-secrets rule is unchanged.
+- `press` takes a key (on the page) or `[selector, key]`.
+- Selectors act on the **first** match, `capture.element` included.
+- Steps and the element screenshot each get their own `stabilize.timeoutMs`.
+- Prod logs in only when a baseline is captured; a frozen-baseline run never
+  logs in to prod ([ADR-0011](../adr/0011-run-always-diffs-a-baseline.md),
+  [ADR-0030](../adr/0030-setup-per-side.md)).
+- WebKit is verified: the steps and scenario tests pass on it in the Playwright
+  Linux image (2026-10-19). `bun run test` skips it where it can't launch, such
+  as on WSL; run the suite in that image to cover it.

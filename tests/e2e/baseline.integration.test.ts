@@ -55,8 +55,9 @@ maybe("snapshot prod once, then run dev against it: unchanged passes, changed fa
     });
     const images = readBaselineImages(db);
     const byKey = new Map<string, BaselineImageRow>(images.map((im) => [`${im.path} ${im.viewport}`, im]));
+    let runId: number;
     try {
-      await runPipeline({
+      runId = await runPipeline({
         config, db, startedAt: "2026-07-04T00:01:00Z", finishedAt: "2026-07-04T00:02:00Z",
         listJobs: async (): Promise<Job[]> => images.map((im) => ({
           path: im.path, viewport: im.viewport,
@@ -71,7 +72,7 @@ maybe("snapshot prod once, then run dev against it: unchanged passes, changed fa
       });
     } finally { dev.stop(); }
 
-    const rows = readComparisons(db, 1);
+    const rows = readComparisons(db, runId);
     expect(rows.find((r) => r.path === "/")!.passed).toBe(true);
     expect(rows.find((r) => r.path === "/about")!.passed).toBe(false);
     // Baseline survived the run.

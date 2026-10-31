@@ -1,0 +1,26 @@
+name: test
+
+# Type-check and run the suite on every push and pull request. No browser is
+# installed, so the browser-guarded tests skip (they were flaky on shared
+# runners; run them locally or in the Docker image). Everything else runs,
+# including every DB fixture under tests/fixtures/db: the compatibility
+# promise of RFC-0009 is that each one still opens, migrates and diffs.
+on:
+  push:
+    branches: [main, v0.x]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Type-check
+        run: bunx tsc --noEmit
+      - name: Test
+        run: bun run test

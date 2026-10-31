@@ -1,6 +1,6 @@
 # RFC-0009: The 1.0 stability contract
 
-**Status:** Draft · **Milestone:** 1.0 · **Created:** 2026-10-16
+**Status:** Accepted · **Milestone:** 1.0 · **Created:** 2026-10-16 · **ADRs:** [0038](../adr/0038-engine-version-in-the-gate.md), [0039](../adr/0039-flags-per-command.md), [0040](../adr/0040-strict-config.md), [0041](../adr/0041-public-api-is-defineconfig.md)
 
 ## Summary
 
@@ -33,7 +33,7 @@ will build on momus once they can rely on it.
 | **Config schema** | A valid 1.0 config stays valid and behaves the same. New fields are optional with defaults. |
 | **CLI** | Commands, flags, and their meanings are stable. Exit codes 0, 1 and 2 keep the meanings in [ADR-0006](../adr/0006-errors-are-rows.md). |
 | **`.sqlite` format** | Every 1.x release opens, migrates, and diffs against a baseline written by any earlier 1.x release ([RFC-0002](0002-storage-and-run-history.md)). |
-| **JSON results / approval list** | Versioned schemas ([RFC-0008](0008-cli-ci-integration.md), [RFC-0007](0007-review-report.md)). Fields are only added within a major version. |
+| **JSON results** | A versioned schema ([RFC-0008](0008-cli-ci-integration.md)). Fields are only added within a major version. |
 | **Programmatic API** | Whatever `src/index.ts` exports at 1.0. |
 | **Docker image** | The entrypoint, the `/work` mount, and tags `:1`, `:1.x`, `:1.x.y`. |
 
@@ -41,8 +41,12 @@ will build on momus once they can rely on it.
 
 - **Pixels across releases.** Upgrading Playwright or the base image can change
   rendering. Every release records its engine version on each run. A release
-  that bumps the engine's major version says so in the changelog, and the
-  compatibility gate warns when a baseline's engine version differs.
+  that bumps the engine's version says so in the changelog, and the
+  compatibility gate refuses a baseline captured with a different engine
+  version ([ADR-0010](../adr/0010-baseline-compatibility-gate.md)), so the
+  upgrade costs a `momus snapshot` rather than a run of false diffs.
+- **Reading 1.x databases from 2.x.** The 2.0 server imports a 1.x `.sqlite`
+  once ([RFC-0010](0010-server.md)); the 2.x CLI need not open one directly.
 - The HTML report's markup, log text, and progress output.
 - Anything under `src/` that `index.ts` doesn't export.
 
@@ -67,6 +71,10 @@ changelog has a "Deprecated" section in every release.
   Changelog sections, rather than relying only on generated release notes.
 - **Compatibility tests:** check in a fixture `.sqlite` for every minor release
   from 1.0 onward. CI opens and diffs each one.
+- **Gate the engine version.** Runs already record it; the baseline must too,
+  and the compatibility gate compares it and refuses a mismatch with a message that names both
+  versions and says to re-snapshot. Baselines recorded before the change need
+  a backward-compatible reading, so it needs an ADR.
 
 ### Release cadence
 
@@ -79,18 +87,24 @@ contract frozen. Only fixes land during that window.
 
 ## Open questions
 
-- Should the `.sqlite` promise cover *reading* 1.x DBs from 2.x, or is 2.0
-  allowed to require a one-time export or import into the server?
-- Should engine-version drift be a warning or a hard gate? A hard gate is
-  correct but forces a re-baseline on many routine upgrades.
+- ~~Should the `.sqlite` promise cover *reading* 1.x DBs from 2.x, or is 2.0
+  allowed to require a one-time export or import into the server?~~ Resolved
+  on 2026-10-20: a one-time import into the server is enough. See What it
+  doesn't cover.
+- ~~Should engine-version drift be a warning or a hard gate? A hard gate is
+  correct but forces a re-baseline on many routine upgrades.~~ Resolved on
+  2026-10-20: a hard gate. See What it doesn't cover and Work to reach the
+  contract.
 
 ## Done when
 
 - [ ] Milestones M1 to M6 are shipped.
-- [ ] Flags are validated per command and unknown config keys are rejected,
+- [x] Flags are validated per command and unknown config keys are rejected,
       each with an ADR.
-- [ ] The public API is decided and documented.
-- [ ] The documentation covers every field, command and recipe.
-- [ ] A changelog, a deprecation policy, and compatibility fixture tests are in
+- [x] The engine version is gated, with an ADR.
+- [x] The public API is decided and documented: `defineConfig` only.
+- [x] The documentation covers every field, command and recipe
+      (`tests/docs.test.ts` keeps it so).
+- [x] A changelog, a deprecation policy, and compatibility fixture tests are in
       CI.
 - [ ] RC period completed.
