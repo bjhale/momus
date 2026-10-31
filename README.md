@@ -57,6 +57,58 @@ docker run --rm -v "$PWD:/work" bjhale/momus snapshot --config momus.config.ts
 docker run --rm -v "$PWD:/work" bjhale/momus run --dev https://dev-pr-123.example.com
 ```
 
+## Configuration
+
+Only `dev` and `prod` are required; every other setting has a default:
+
+```ts
+import { defineConfig } from "momus";
+
+export default defineConfig({
+  dev: "https://dev.example.com",  // the build under test
+  prod: "https://www.example.com", // the baseline
+});
+```
+
+A typical starting point narrows the pages, hides what changes on every load,
+and loosens the gate where some churn is expected:
+
+```ts
+import { defineConfig } from "momus";
+
+export default defineConfig({
+  dev: "https://dev.example.com",
+  prod: "https://www.example.com",
+
+  viewports: [375, 1280],                 // mobile and desktop
+
+  discovery: {
+    maxPages: 200,                        // cap the run while you tune it
+    exclude: ["/admin/**", "/tag/**"],    // pages not worth comparing
+  },
+
+  stabilize: {
+    mask: [".carousel", "[data-timestamp]"],  // hide regions that change on every load
+    remove: [".cookie-banner"],               // delete overlays entirely
+  },
+
+  diff: {
+    failScore: 0.01,                                     // fail a page above 1% changed pixels
+    overrides: [{ path: "/blog/**", failScore: 0.05 }],  // looser where content churns
+  },
+});
+```
+
+**[→ Configuration reference](docs/config.md)**: an annotated example with
+every setting, and each one's default.
+
+- [Sites](docs/config.md#sites): URLs, browser engine, request headers
+- [Discovery](docs/config.md#discovery): sitemap, crawl, URL list, include/exclude
+- [Viewports](docs/config.md#viewports) and [Stabilize](docs/config.md#stabilize): widths, waits, masking dynamic regions
+- [Diff](docs/config.md#diff): the pass/fail threshold and per-path overrides
+- [Output](docs/config.md#output): report and database paths, run history
+- [Scenarios](docs/config.md#scenarios) and [Setup](docs/config.md#setup): pages in a particular state, logging in
+
 ## Documentation
 
 - [Commands and flags](docs/cli.md): `init`, `install-browser`, `snapshot`,
